@@ -1673,7 +1673,9 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
   if (!pubkeyHex) {
     try { pubkeyHex = await provider.getPublicKey(); } catch(_) {}
   }
-  console.log('pubkey:', pubkeyHex, 'length:', pubkeyHex.length);
+  console.log('pubkey hex:', pubkeyHex, 'len:', pubkeyHex.length);
+  const xOnly = pubkeyHex.length === 66 ? pubkeyHex.slice(2) : pubkeyHex.slice(0, 64);
+  console.log('x-only pubkey:', xOnly);
 
   // 4. Build PSBT using OP_WALLET's Taproot address format
   // OP_WALLET uses "opt1p..." prefix internally but signs standard Taproot
@@ -1762,20 +1764,24 @@ async function buildOPNetPSBT(utxos, toAddress, amountSats, changeAmount, change
   parts.push(rawTx);
   parts.push(new Uint8Array([0x00])); // end globals
 
+  // x-only pubkey (32 bytes) from compressed pubkey (33 bytes, drop first byte)
+  const xOnlyPubkey = pubkeyHex.length === 66
+    ? hexToBytes(pubkeyHex).slice(1)   // compressed → x-only
+    : hexToBytes(pubkeyHex).slice(0, 32); // already 32 bytes
+
   // Per-input maps
   for (const inp of inputs) {
-    // PSBT_IN_NON_WITNESS_UTXO (key type 0x00) — full prev tx
-    if (inp.nonWitnessUtxoBase64) {
-      const prevTxBytes = base64ToBytes(inp.nonWitnessUtxoBase64);
-      parts.push(new Uint8Array([0x01, 0x00])); // key length 1, key type 0x00
-      parts.push(encodeVarInt(prevTxBytes.length));
-      parts.push(prevTxBytes);
-    }
-    // PSBT_IN_WITNESS_UTXO (key type 0x01) — for segwit/taproot
+    // PSBT_IN_WITNESS_UTXO (key type 0x01) — required for Taproot
     const witnessOut = buildTxOutputBytes(inp.value, hexToBytes(inp.scriptPubKeyHex));
     parts.push(new Uint8Array([0x01, 0x01]));
     parts.push(encodeVarInt(witnessOut.length));
     parts.push(witnessOut);
+
+    // PSBT_IN_TAP_INTERNAL_KEY (key type 0x15) — x-only internal pubkey
+    // This tells OP_WALLET: "sign this input with the key matching this x-only pubkey"
+    parts.push(new Uint8Array([0x01, 0x15]));          // key: type 0x15
+    parts.push(new Uint8Array([0x20]));                 // value length: 32 bytes
+    parts.push(xOnlyPubkey);                            // value: x-only pubkey
 
     parts.push(new Uint8Array([0x00])); // end this input
   }
@@ -1824,18 +1830,27 @@ function buildTxOutputBytes(valueSats, scriptPubKey) {
 }
 
 function addressToScriptPubKey(address) {
-  // Handle both standard bech32 (tb1q/bc1q) and OP_NET custom (opt1p) addresses
-  // All are bech32/bech32m encoded — decode witness program
+  // Handle standard bech32 (tb1q), bech32m (tb1p), and OP_NET custom (opt1p...)
   try {
-    const witProg = bech32Decode(address);
-    // Determine witness version from address
-    // tb1q/bc1q = v0 (OP_0), tb1p/opt1p = v1 (OP_1 = 0x51)
-    const isV1 = address.includes('1p') || address.startsWith('opt1');
-    const witVer = isV1 ? 0x51 : 0x00;
+    // For opt1p... addresses: custom HRP "opt", witness v1, 32-byte program
+    // Decode by finding separator "1" and parsing the data part
+    const sepIdx = address.lastIndexOf('1');
+    const hrp = address.slice(0, sepIdx);
+    const isV1 = address[sepIdx + 1] === 'p' || hrp === 'opt' || address.startsWith('tb1p');
+    const witVer = isV1 ? 0x51 : 0x00; // OP_1 for taproot, OP_0 for segwit
+
+    // Decode bech32/bech32m data
+    const dataStr = address.slice(sepIdx + 1);
+    const data = dataStr.split('').map(c => BECH32_CHARSET.indexOf(c)).filter(v => v >= 0);
+    // Skip witness version byte and checksum (last 6)
+    const payload = data.slice(1, data.length - 6);
+    const witProg = new Uint8Array(convertBits(payload, 5, 8, false));
+
+    console.log('addressToScriptPubKey:', address, '→ witver:', witVer, 'prog len:', witProg.length);
     return new Uint8Array([witVer, witProg.length, ...witProg]);
   } catch(e) {
-    console.error('addressToScriptPubKey failed for:', address, e);
-    return new Uint8Array([0x51, 0x20, ...new Uint8Array(32)]); // fallback
+    console.error('addressToScriptPubKey failed for:', address, e.message);
+    return new Uint8Array([0x51, 0x20, ...new Uint8Array(32)]);
   }
 }
 
