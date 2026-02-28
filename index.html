@@ -738,7 +738,7 @@ select.field-input {
 <!-- ═══ HEADER ═══ -->
 <header>
   <div class="logo">
-    <span class="logo-name">Epoch Vault</span>
+    <span class="logo-name">SatAnchor</span>
     <span class="logo-tag">Bitcoin · Layer 1</span>
   </div>
   <div class="header-right">
@@ -955,7 +955,7 @@ select.field-input {
 
         <!-- Protocol info -->
         <div style="background:var(--bg);border:1px solid var(--border);padding:14px;font-size:10px;color:var(--muted);line-height:1.8;">
-          <div>Protocol: <span style="color:var(--muted2)">EPOCH_VAULT_V1</span></div>
+          <div>Protocol: <span style="color:var(--muted2)">SatAnchor_V1</span></div>
           <div>Script: <span style="color:var(--muted2)">P2WSH + CLTV</span></div>
           <div>Network: <span style="color:var(--amber)">Bitcoin Testnet</span></div>
           <div>Commitment: <span style="color:var(--muted2)">OP_RETURN</span></div>
@@ -1041,20 +1041,20 @@ const STATE = {
 const NETWORK = 'testnet';
 const MEMPOOL_API = 'https://mempool.space/testnet/api';
 const HALVING_BLOCKS = { 4:840000, 5:1050000, 6:1260000, 7:1470000, 8:1680000 };
-const PROTOCOL_MAGIC = 'EPOCH_VAULT_V1';
+const PROTOCOL_MAGIC = 'SatAnchorT_V1';
 
 /* ═══════════════════════════════════════════════════
    STORAGE
 ═══════════════════════════════════════════════════ */
 function loadVaults() {
   try {
-    const raw = localStorage.getItem('epoch_vault_vaults');
+    const raw = localStorage.getItem('SatAnchort_vaults');
     STATE.vaults = raw ? JSON.parse(raw) : [];
   } catch(e) { STATE.vaults = []; }
 }
 
 function saveVaults() {
-  localStorage.setItem('epoch_vault_vaults', JSON.stringify(STATE.vaults));
+  localStorage.setItem('SatAnchor_vaults', JSON.stringify(STATE.vaults));
 }
 
 function addVault(vault) {
@@ -2157,7 +2157,7 @@ function debugWallets() {
   notify('Wallet detection', msg || 'No wallets detected', found.length > 0 ? 'success' : 'error');
 
   // Log full details to console for debugging
-  console.group('Epoch Vault — Wallet Detection');
+  console.group('SatAnchor — Wallet Detection');
   checks.forEach(([k,t]) => console.log(k, '→', t, t!=='undefined' ? window[k.split('.')[1]] : ''));
   console.groupEnd();
   notify('Console details', 'Open DevTools (F12) → Console for full info', 'info');
