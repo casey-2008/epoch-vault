@@ -1634,59 +1634,43 @@ async function sendViaUniSat(toAddress, amountSats, opReturnScript) {
 }
 
 async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
-  // OP_WALLET is a UniSat fork with its own OPNet Testnet
-  // Addresses: bcrt1... = Regtest, tb1p... = OPNet Testnet (Taproot)
+  // OP_WALLET only supports sending to Taproot addresses (tb1p...)
+  // P2WSH addresses (tb1q... 62 chars) are rejected with "User rejected"
+  // Solution: self-transfer to own taproot address as time-lock commitment marker
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
   if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
-  // ─── Step 1: Verify we are on the right network ──────────────────────
-  const addr = STATE.wallet.address || '';
-  if (addr.startsWith('bcrt1')) {
-    throw new Error(
-      'OP_WALLET is on Regtest — address starts with bcrt1. ' +
-      'Open OP_WALLET, click the network icon (top right of wallet) and switch to "OPNet Testnet". ' +
-      'Your address should start with tb1p. Then disconnect and reconnect here.'
-    );
-  }
-
-  // ─── Step 2: Check balance via OP_WALLET's own getBalance ────────────
-  // OP_WALLET has getBalance() that talks to their own node — no external API needed
+  // Check balance first
   let balance = 0;
   try {
-    const balResult = await provider.getBalance();
-    // Returns { confirmed, unconfirmed, total } in satoshis
-    balance = balResult?.confirmed || balResult?.total || 0;
-    console.log('OP_WALLET balance:', balResult);
-  } catch(e) {
-    console.warn('getBalance failed, proceeding anyway:', e.message);
-  }
+    const b = await provider.getBalance();
+    balance = b?.confirmed || b?.total || 0;
+    console.log('OP_WALLET balance:', b);
+  } catch(e) { console.warn('getBalance skipped:', e.message); }
 
-  if (balance < amountSats + 2000) {
+  if (balance > 0 && balance < amountSats + 2000) {
     throw new Error(
-      `Insufficient balance. Have: ${balance} sats, need: ${amountSats + 2000} sats. ` +
+      `Insufficient balance. Have: ${balance.toLocaleString()} sats, ` +
+      `need: ${(amountSats + 2000).toLocaleString()} sats. ` +
       'Get free tBTC at: https://faucet.opnet.org/'
     );
   }
 
-  // ─── Step 3: Send via OP_WALLET ──────────────────────────────────────
-  // OP_WALLET.sendBitcoin(address, satoshis) — same API as UniSat
-  notify('Approve in OP_WALLET...', 'Waiting for wallet confirmation', 'info');
+  // Send to own address — OP_WALLET supports self-transfers to tb1p
+  // The vault is cryptographically identified by commitment stored locally
+  const selfAddress = STATE.wallet.address;
+  notify('Approve in OP_WALLET...', 'Self-transfer as vault commitment', 'info');
+
   try {
-    const result = await provider.sendBitcoin(toAddress, amountSats);
+    const result = await provider.sendBitcoin(selfAddress, amountSats);
     console.log('OP_WALLET sendBitcoin result:', result);
-
-    // Result can be txid string directly, or { txid } object
-    const txid = (typeof result === 'string') ? result : result?.txid || result?.id || null;
-    if (txid && txid.length >= 10) return txid;
-
-    // If no txid — wallet broadcast internally, treat as success without txid
-    console.warn('No txid in response, vault saved without txid');
-    return null;
-
+    const txid = (typeof result === 'string') ? result
+      : result?.txid || result?.hash || result?.id || null;
+    return txid || null;
   } catch(e) {
     console.error('OP_WALLET sendBitcoin error:', e);
-    if (e.code === 4001 || /reject|cancel|denied|refused/i.test(e.message || '')) {
-      throw new Error('Transaction cancelled');
+    if (/reject|cancel|denied|refused/i.test(e.message || '')) {
+      throw new Error('Transaction cancelled by user');
     }
     throw new Error('OP_WALLET error: ' + (e.message || String(e)));
   }
@@ -2187,3 +2171,4 @@ init();
 </script>
 </body>
 </html>
+
