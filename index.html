@@ -1290,13 +1290,39 @@ async function connectWallet(type) {
       let pubkey = '';
       try { pubkey = await provider.getPublicKey(); } catch(_) {}
 
-      // Switch to testnet if needed
-      try {
-        const net = await provider.getNetwork();
-        if (net && !String(net).toLowerCase().includes('test')) {
-          await provider.switchNetwork('testnet');
+      // Switch to testnet if needed — bcrt1 = regtest, must be tb1 = testnet
+      // OP_WALLET network names: "regtest", "OPNet Testnet", "livenet"
+      // We need "OPNet Testnet" — addresses start with tb1...
+      let net = '';
+      try { net = String(await provider.getNetwork()).toLowerCase(); } catch(_) {}
+      console.log('OP_WALLET detected network:', net);
+
+      const isCorrectNet = net.includes('testnet') || net.includes('opnet testnet');
+      if (!isCorrectNet) {
+        // Try to switch — OP_WALLET uses "testnet" or "opnet testnet" as network name
+        let switched = false;
+        for (const netName of ['testnet', 'OPNet Testnet', 'opnet_testnet']) {
+          try {
+            await provider.switchNetwork(netName);
+            switched = true;
+            notify('Network switched', 'OP_WALLET → OPNet Testnet', 'info');
+            break;
+          } catch(_) {}
         }
-      } catch(_) {}
+        if (!switched) {
+          notify(
+            'Switch network manually',
+            'In OP_WALLET: click Bitcoin logo (top right) → select "OPNet Testnet" → reconnect.',
+            'warning'
+          );
+        }
+        // Re-fetch address after network switch
+        try {
+          const newAccounts = await provider.requestAccounts();
+          if (newAccounts?.[0]) accounts[0] = newAccounts[0];
+          try { pubkey = await provider.getPublicKey(); } catch(_) {}
+        } catch(_) {}
+      }
 
       STATE.wallet = { type:'opnet', address:accounts[0], pubkey, _provider: provider };
       onWalletConnected();
@@ -1391,7 +1417,13 @@ async function broadcastTx(rawHex) {
 }
 
 async function checkUtxo(address) {
-  const res = await fetch(`${MEMPOOL_API}/address/${address}/utxo`);
+  // For OP_NET Taproot addresses (tb1p...) use their testnet explorer
+  // For standard testnet (tb1q...) use mempool.space
+  const api = address.startsWith('tb1p')
+    ? `https://mempool.space/testnet/api/address/${address}/utxo`
+    : `${MEMPOOL_API}/address/${address}/utxo`;
+  const res = await fetch(api);
+  if (!res.ok) throw new Error(`UTXO fetch failed (${res.status}): ${await res.text()}`);
   return await res.json();
 }
 
@@ -1461,13 +1493,25 @@ async function createVault() {
     }
 
     // 3. Build CLTV script
-    const pubkey = STATE.wallet.pubkey;
-    if (!pubkey) throw new Error('Wallet did not provide public key. Try OP_NET or update UniSat.');
+    // For OP_NET (no pubkey available), we store script params but skip PSBT building
+    const pubkey = STATE.wallet.pubkey || '';
+    const hasFullPubkey = pubkey && pubkey.length >= 66; // 33 bytes compressed = 66 hex chars
+    if (!hasFullPubkey && STATE.wallet.type === 'unisat') {
+      throw new Error('Wallet did not provide public key. Please update UniSat extension.');
+    }
 
-    const redeemScript = buildCLTVRedeemScript(pubkey, cltvValue);
-    const redeemHex = bytesToHex(redeemScript);
-    const vaultAddress = await buildP2WSHAddress(redeemScript);
-    const opReturnScript = await buildOPReturnScript(vaultId, msgHash);
+    let redeemScript, redeemHex, vaultAddress, opReturnScript;
+    if (hasFullPubkey) {
+      redeemScript = buildCLTVRedeemScript(pubkey, cltvValue);
+      redeemHex = bytesToHex(redeemScript);
+      vaultAddress = await buildP2WSHAddress(redeemScript);
+    } else {
+      // OP_NET: no compressed pubkey available — vault stored locally, BTC sent to own address
+      redeemHex = '';
+      vaultAddress = STATE.wallet.address; // funds stay in wallet for now
+      notify('Note', 'OP_NET does not expose compressed pubkey — vault saved locally without P2WSH address', 'warning');
+    }
+    opReturnScript = await buildOPReturnScript(vaultId, msgHash);
 
     setStep('s1', 'done');
     setStep('s2', 'active');
@@ -1590,27 +1634,61 @@ async function sendViaUniSat(toAddress, amountSats, opReturnScript) {
 }
 
 async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
-  // Use provider stored at connect time
+  // OP_WALLET is a UniSat fork with its own OPNet Testnet
+  // Addresses: bcrt1... = Regtest, tb1p... = OPNet Testnet (Taproot)
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
-  if (!provider) throw new Error('OP_WALLET provider not found. Reconnect wallet.');
+  if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
+  // ─── Step 1: Verify we are on the right network ──────────────────────
+  const addr = STATE.wallet.address || '';
+  if (addr.startsWith('bcrt1')) {
+    throw new Error(
+      'OP_WALLET is on Regtest — address starts with bcrt1. ' +
+      'Open OP_WALLET, click the network icon (top right of wallet) and switch to "OPNet Testnet". ' +
+      'Your address should start with tb1p. Then disconnect and reconnect here.'
+    );
+  }
+
+  // ─── Step 2: Check balance via OP_WALLET's own getBalance ────────────
+  // OP_WALLET has getBalance() that talks to their own node — no external API needed
+  let balance = 0;
   try {
-    const utxos = await checkUtxo(STATE.wallet.address);
-    if (!utxos || utxos.length === 0) {
-      throw new Error('No UTXOs found. Get testnet BTC from: https://faucet.opnet.org/');
-    }
-    const psbt = await buildPSBT(utxos, toAddress, amountSats, opReturnScript);
-    const psbtHex = bytesToHex(psbt);
-    const signed = await provider.signPsbt(psbtHex, { autoFinalized: true });
-    const txHex = signed; // OP_WALLET returns finalized tx hex when autoFinalized
-    return await broadcastTx(txHex);
+    const balResult = await provider.getBalance();
+    // Returns { confirmed, unconfirmed, total } in satoshis
+    balance = balResult?.confirmed || balResult?.total || 0;
+    console.log('OP_WALLET balance:', balResult);
   } catch(e) {
-    // Fallback: simple sendBitcoin (no OP_RETURN)
-    if (e.message?.includes('UTXO') || e.message?.includes('faucet')) throw e;
-    console.warn('PSBT failed for OP_WALLET, trying sendBitcoin:', e.message);
-    notify('Note', 'Using simple transfer (OP_RETURN skipped). Vault still saved locally.', 'warning');
-    const txid = await provider.sendBitcoin(toAddress, amountSats);
-    return txid;
+    console.warn('getBalance failed, proceeding anyway:', e.message);
+  }
+
+  if (balance < amountSats + 2000) {
+    throw new Error(
+      `Insufficient balance. Have: ${balance} sats, need: ${amountSats + 2000} sats. ` +
+      'Get free tBTC at: https://faucet.opnet.org/'
+    );
+  }
+
+  // ─── Step 3: Send via OP_WALLET ──────────────────────────────────────
+  // OP_WALLET.sendBitcoin(address, satoshis) — same API as UniSat
+  notify('Approve in OP_WALLET...', 'Waiting for wallet confirmation', 'info');
+  try {
+    const result = await provider.sendBitcoin(toAddress, amountSats);
+    console.log('OP_WALLET sendBitcoin result:', result);
+
+    // Result can be txid string directly, or { txid } object
+    const txid = (typeof result === 'string') ? result : result?.txid || result?.id || null;
+    if (txid && txid.length >= 10) return txid;
+
+    // If no txid — wallet broadcast internally, treat as success without txid
+    console.warn('No txid in response, vault saved without txid');
+    return null;
+
+  } catch(e) {
+    console.error('OP_WALLET sendBitcoin error:', e);
+    if (e.code === 4001 || /reject|cancel|denied|refused/i.test(e.message || '')) {
+      throw new Error('Transaction cancelled');
+    }
+    throw new Error('OP_WALLET error: ' + (e.message || String(e)));
   }
 }
 
