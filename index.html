@@ -1518,24 +1518,31 @@ async function createVault() {
 
     // 4. Sign transaction via wallet
     let txid;
-    let rawTx;
+    const skipBroadcastForOpnet = STATE.wallet.type === 'opnet' && !hasFullPubkey;
 
-    if (STATE.wallet.type === 'unisat') {
-      txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
-    } else {
-      txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
-    }
-
-    setStep('s2', 'done');
-    setStep('s3', 'active');
-
-    // Если txid получен, помечаем шаг как выполненный, иначе считаем, что транзакция отправлена, но без ID
-    if (txid) {
+    if (skipBroadcastForOpnet) {
+      // OP_NET часто зависает на sendBitcoin; пока работаем в безопасном оффчейн-режиме
+      setStep('s2', 'done');
       setStep('s3', 'done');
+      notify('OP_NET limited mode', 'Vault saved locally. On-chain send is skipped to avoid wallet freeze.', 'warning');
     } else {
-      // Транзакция могла быть отправлена, но кошелёк не вернул ID (например, OP_WALLET иногда не возвращает)
-      setStep('s3', 'done');
-      notify('Transaction sent', 'Waiting for confirmation (no txid received)', 'warning');
+      if (STATE.wallet.type === 'unisat') {
+        txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
+      } else {
+        txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
+      }
+
+      setStep('s2', 'done');
+      setStep('s3', 'active');
+
+      // Если txid получен, помечаем шаг как выполненный, иначе считаем, что транзакция отправлена, но без ID
+      if (txid) {
+        setStep('s3', 'done');
+      } else {
+        // Транзакция могла быть отправлена, но кошелёк не вернул ID (например, OP_WALLET иногда не возвращает)
+        setStep('s3', 'done');
+        notify('Transaction sent', 'Waiting for confirmation (no txid received)', 'warning');
+      }
     }
 
     // 5. Save vault
@@ -1643,50 +1650,56 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
   if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
-  // Проверяем наличие метода sendBitcoin
-  if (typeof provider.sendBitcoin !== 'function') {
-    throw new Error('sendBitcoin method not available in OP_WALLET');
+  const withTimeout = (promise, label, ms = 30000) => Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timeout after ${ms / 1000} seconds`)), ms)
+    )
+  ]);
+
+  if (typeof provider.sendBitcoin !== 'function' && typeof provider.request !== 'function') {
+    throw new Error('sendBitcoin API not available in OP_WALLET');
   }
 
-  // Проверка баланса (опционально, но оставляем)
-  let balance = 0;
-  try {
-    const b = await provider.getBalance();
-    balance = b?.confirmed || b?.total || 0;
-    console.log('OP_WALLET balance:', b);
-  } catch(e) { console.warn('getBalance skipped:', e.message); }
+  notify('Approve in OP_WALLET...', 'Confirm transaction in wallet popup', 'info');
 
-  if (balance > 0 && balance < amountSats + 2000) {
-    throw new Error(
-      `Insufficient balance. Have: ${balance.toLocaleString()} sats, ` +
-      `need: ${(amountSats + 2000).toLocaleString()} sats. ` +
-      'Get free tBTC at: https://faucet.opnet.org/'
-    );
-  }
+  const btcAmount = (amountSats / 1e8).toFixed(8);
+  const attempts = [
+    {
+      label: 'sendBitcoin(sats)',
+      run: () => provider.sendBitcoin(toAddress, amountSats),
+    },
+    {
+      label: 'sendBitcoin(btc-string)',
+      run: () => provider.sendBitcoin(toAddress, btcAmount),
+    },
+    {
+      label: 'request(sendBitcoin)',
+      run: () => provider.request({ method: 'sendBitcoin', params: [toAddress, amountSats] }),
+      skip: typeof provider.request !== 'function',
+    },
+  ];
 
-  const selfAddress = STATE.wallet.address;
-  notify('Approve in OP_WALLET...', 'Self-transfer as vault commitment', 'info');
+  let lastError = null;
 
-  // Добавляем таймаут 30 секунд
-  const sendPromise = provider.sendBitcoin(selfAddress, amountSats);
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('sendBitcoin timeout after 30 seconds')), 30000)
-  );
-
-  try {
-    const result = await Promise.race([sendPromise, timeoutPromise]);
-    console.log('OP_WALLET sendBitcoin result:', result);
-    // OP_WALLET может возвращать объект с txid или строку
-    const txid = (typeof result === 'string') ? result
-      : result?.txid || result?.hash || result?.id || null;
-    return txid;
-  } catch (e) {
-    console.error('OP_WALLET sendBitcoin error:', e);
-    if (/reject|cancel|denied|refused|timeout/i.test(e.message || '')) {
-      throw new Error('Transaction cancelled or timed out');
+  for (const attempt of attempts) {
+    if (attempt.skip) continue;
+    try {
+      const result = await withTimeout(attempt.run(), attempt.label, 30000);
+      console.log(`OP_WALLET ${attempt.label} result:`, result);
+      const txid = (typeof result === 'string') ? result
+        : result?.txid || result?.hash || result?.id || result?.result || null;
+      return txid;
+    } catch (e) {
+      lastError = e;
+      console.warn(`OP_WALLET ${attempt.label} failed:`, e);
+      if (/reject|cancel|denied|refused/i.test(e.message || '')) {
+        throw new Error('Transaction was cancelled in OP_WALLET');
+      }
     }
-    throw new Error('OP_WALLET error: ' + (e.message || String(e)));
   }
+
+  throw new Error('OP_WALLET send failed: ' + (lastError?.message || 'Unknown error'));
 }
 
 async function buildPSBT(utxos, toAddress, amountSats, opReturnScript) {
