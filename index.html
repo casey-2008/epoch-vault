@@ -1688,21 +1688,17 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
 
   let signedPsbt;
   try {
+    // For Taproot (opt1p/tb1p): let OP_WALLET auto-detect signing key
+    // Do NOT pass toSignInputs — wallet knows which key matches its own UTXOs
     signedPsbt = await Promise.race([
-      provider.signPsbt(psbtHex, {
-        autoFinalized: true,
-        toSignInputs: selected.map((_, i) => ({
-          index: i,
-          address: selfAddress,
-          disableTweakSigner: false,
-        }))
-      }),
+      provider.signPsbt(psbtHex, { autoFinalized: true }),
       new Promise((_, reject) =>
         setTimeout(() => reject(new Error('OP_WALLET signPsbt timed out after 30s')), 30000)
       )
     ]);
-    console.log('signPsbt result type:', typeof signedPsbt, 'length:', signedPsbt?.length);
+    console.log('signPsbt result:', typeof signedPsbt, signedPsbt?.length);
   } catch(e) {
+    console.error('signPsbt error:', e);
     if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) {
       throw new Error('Transaction cancelled by user');
     }
