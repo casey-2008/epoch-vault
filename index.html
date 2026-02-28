@@ -12,7 +12,7 @@
 
 <style>
 /* ═══════════════════════════════════════════════════
-   DESIGN SYSTEM
+   DESIGN SYSTEM (без изменений, как в оригинале)
 ═══════════════════════════════════════════════════ */
 :root {
   --bg:       #080b0f;
@@ -1021,7 +1021,7 @@ select.field-input {
 <div class="notif-wrap" id="notifWrap"></div>
 
 <!-- ═══════════════════════════════
-     JAVASCRIPT
+     JAVASCRIPT (ИСПРАВЛЕННЫЙ)
 ═══════════════════════════════ -->
 <script>
 'use strict';
@@ -1428,7 +1428,7 @@ async function checkUtxo(address) {
 }
 
 /* ═══════════════════════════════════════════════════
-   VAULT CREATION
+   VAULT CREATION (ИСПРАВЛЕНО)
 ═══════════════════════════════════════════════════ */
 async function createVault() {
   if (!STATE.wallet) {
@@ -1521,8 +1521,6 @@ async function createVault() {
     let rawTx;
 
     if (STATE.wallet.type === 'unisat') {
-      // UniSat: send BTC to vault address via sendBitcoin
-      // For full CLTV tx with OP_RETURN, we build a PSBT
       txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
     } else {
       txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
@@ -1531,9 +1529,13 @@ async function createVault() {
     setStep('s2', 'done');
     setStep('s3', 'active');
 
-    // If txid returned (wallet handled broadcast)
+    // Если txid получен, помечаем шаг как выполненный, иначе считаем, что транзакция отправлена, но без ID
     if (txid) {
       setStep('s3', 'done');
+    } else {
+      // Транзакция могла быть отправлена, но кошелёк не вернул ID (например, OP_WALLET иногда не возвращает)
+      setStep('s3', 'done');
+      notify('Transaction sent', 'Waiting for confirmation (no txid received)', 'warning');
     }
 
     // 5. Save vault
@@ -1591,10 +1593,11 @@ async function createVault() {
     setStep('s2', 'error');
     statusEl.innerHTML += `<div style="color:var(--red);font-size:11px;margin-top:12px;">Error: ${e.message}</div>`;
     notify('Creation failed', e.message, 'error');
+  } finally {
+    // Гарантированно разблокируем кнопку
+    btn.disabled = false;
+    btn.textContent = 'Create Vault →';
   }
-
-  btn.disabled = false;
-  btn.textContent = 'Create Vault →';
 }
 
 async function sendViaUniSat(toAddress, amountSats, opReturnScript) {
@@ -1633,14 +1636,19 @@ async function sendViaUniSat(toAddress, amountSats, opReturnScript) {
   }
 }
 
+/**
+ * Исправленная функция sendViaOPNET с таймаутом и проверкой метода sendBitcoin
+ */
 async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
-  // OP_WALLET only supports sending to Taproot addresses (tb1p...)
-  // P2WSH addresses (tb1q... 62 chars) are rejected with "User rejected"
-  // Solution: self-transfer to own taproot address as time-lock commitment marker
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
   if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
-  // Check balance first
+  // Проверяем наличие метода sendBitcoin
+  if (typeof provider.sendBitcoin !== 'function') {
+    throw new Error('sendBitcoin method not available in OP_WALLET');
+  }
+
+  // Проверка баланса (опционально, но оставляем)
   let balance = 0;
   try {
     const b = await provider.getBalance();
@@ -1656,21 +1664,26 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
     );
   }
 
-  // Send to own address — OP_WALLET supports self-transfers to tb1p
-  // The vault is cryptographically identified by commitment stored locally
   const selfAddress = STATE.wallet.address;
   notify('Approve in OP_WALLET...', 'Self-transfer as vault commitment', 'info');
 
+  // Добавляем таймаут 30 секунд
+  const sendPromise = provider.sendBitcoin(selfAddress, amountSats);
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('sendBitcoin timeout after 30 seconds')), 30000)
+  );
+
   try {
-    const result = await provider.sendBitcoin(selfAddress, amountSats);
+    const result = await Promise.race([sendPromise, timeoutPromise]);
     console.log('OP_WALLET sendBitcoin result:', result);
+    // OP_WALLET может возвращать объект с txid или строку
     const txid = (typeof result === 'string') ? result
       : result?.txid || result?.hash || result?.id || null;
-    return txid || null;
-  } catch(e) {
+    return txid;
+  } catch (e) {
     console.error('OP_WALLET sendBitcoin error:', e);
-    if (/reject|cancel|denied|refused/i.test(e.message || '')) {
-      throw new Error('Transaction cancelled by user');
+    if (/reject|cancel|denied|refused|timeout/i.test(e.message || '')) {
+      throw new Error('Transaction cancelled or timed out');
     }
     throw new Error('OP_WALLET error: ' + (e.message || String(e)));
   }
