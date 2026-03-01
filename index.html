@@ -2207,19 +2207,26 @@ async function unlockVault(id) {
 
     if (!provider) throw new Error('Wallet provider not found. Reconnect wallet.');
 
-    // Build toSignInputs array so the wallet knows exactly which key to use
-    const toSignInputs = utxos.map((_, i) => ({
-      index:       i,
-      address:     destAddress,    // key matching this address signs
-      sighashTypes:[0x01],         // SIGHASH_ALL
-    }));
+    // toSignInputs: for P2WSH UniSat needs the pubkey (not address) to know which key to use
+    const pubkeyForSign = wallet.pubkey || '';
+    const toSignInputs = utxos.map((_, idx) => {
+      const entry = {
+        index:        idx,
+        sighashTypes: [0x01], // SIGHASH_ALL
+      };
+      // Provide both pubkey and address — wallet picks whichever it supports
+      if (pubkeyForSign) entry.publicKey = pubkeyForSign;
+      entry.address = destAddress;
+      return entry;
+    });
 
     let signedPsbt;
     try {
       signedPsbt = await provider.signPsbt(psbtHex, {
-        autoFinalized: false,        // we finalize manually to inject witness
+        autoFinalized: false, // we finalize manually to set correct CLTV witness
         toSignInputs,
       });
+      console.log('signedPsbt type:', typeof signedPsbt, 'length:', signedPsbt?.length);
     } catch (e) {
       if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
         throw new Error('Transaction cancelled by user');
@@ -2316,36 +2323,50 @@ async function buildCLTVSpendPSBT({ utxos, redeemScript, destAddress, amountOut,
   // ── Assemble PSBT ────────────────────────────────────────────────────────
   const parts = [PSBT_MAGIC];
 
-  // Global: unsigned tx
-  parts.push(new Uint8Array([0x01, 0x00]));
+  // Global: unsigned tx (key type 0x00, key length 0x01)
+  parts.push(new Uint8Array([0x01, 0x00])); // key: length=1, type=0x00
   parts.push(encodeVarInt(rawTx.length));
   parts.push(rawTx);
   parts.push(new Uint8Array([0x00])); // end globals
 
-  // P2WSH script for vault address (for witness_utxo)
+  // P2WSH scriptPubKey for the vault address
   const vaultScriptPubKey = addressToScriptPubKey(vaultAddress);
 
+  // Get pubkey bytes for PSBT_IN_PARTIAL_SIG key format
+  const pubkeyHex = STATE.wallet?.pubkey || '';
+  const pubkeyBytes = pubkeyHex ? hexToBytes(pubkeyHex) : null;
+
   for (const u of inputDefs) {
-    // PSBT_IN_WITNESS_UTXO (type 0x01) — required for segwit
+    // PSBT_IN_WITNESS_UTXO (key type 0x01) — the output being spent
     const witnessUtxo = buildTxOutputBytes(u.value, vaultScriptPubKey);
-    parts.push(new Uint8Array([0x01, 0x01]));
+    parts.push(new Uint8Array([0x01, 0x01])); // key: len=1, type=0x01
     parts.push(encodeVarInt(witnessUtxo.length));
     parts.push(witnessUtxo);
 
-    // PSBT_IN_WITNESS_SCRIPT (type 0x05) — the actual redeem script
-    parts.push(new Uint8Array([0x01, 0x05]));
+    // PSBT_IN_WITNESS_SCRIPT (key type 0x05) — redeemScript for P2WSH
+    // This is critical: wallet uses this to compute the correct BIP143 sighash
+    parts.push(new Uint8Array([0x01, 0x05])); // key: len=1, type=0x05
     parts.push(encodeVarInt(redeemScript.length));
     parts.push(redeemScript);
 
-    // PSBT_IN_SEQUENCE (type 0x0a) — locktime constraint
-    parts.push(new Uint8Array([0x01, 0x0a]));
-    parts.push(new Uint8Array([0x04]));
-    parts.push(uint32LE(sequence));
+    // PSBT_IN_BIP32_DERIVATION (key type 0x06) — hint to wallet which key to use
+    // key = 0x06 + pubkey (34 bytes), value = masterFingerprint(4) + path
+    // Omit if no pubkey — wallet will still sign if it recognises the script
+    if (pubkeyBytes) {
+      const derivKey = new Uint8Array([1 + pubkeyBytes.length, 0x06, ...pubkeyBytes]);
+      const derivVal = new Uint8Array([0x00, 0x00, 0x00, 0x00]); // unknown fingerprint/path
+      parts.push(derivKey);
+      parts.push(encodeVarInt(derivVal.length));
+      parts.push(derivVal);
+    }
 
-    parts.push(new Uint8Array([0x00])); // end input
+    // NOTE: PSBT_IN_SEQUENCE (0x0a) is PSBT v2 only — omit for v0
+    // nLockTime/nSequence are already encoded in the unsigned rawTx above
+
+    parts.push(new Uint8Array([0x00])); // end this input map
   }
 
-  // Output map (empty)
+  // Per-output maps (empty)
   parts.push(new Uint8Array([0x00]));
 
   const total  = parts.reduce((s, p) => s + p.length, 0);
@@ -2453,20 +2474,20 @@ function finalizeCLTVPsbt(psbtHex, redeemScript, numInputs) {
   const rawOuts   = rawTxBytes.slice(outStart, pos);
   const locktime  = rawTxBytes.slice(pos, pos + 4);
 
-  // Build witness for each input: <> <sig> <redeemScript>
+  // Build witness for each input.
+  // Redeem script: <cltv> OP_CLTV OP_DROP <pubkey> OP_CHECKSIG
+  // Correct P2WSH witness: [ <sig>, <redeemScript> ]  — exactly 2 items.
+  // The empty OP_0 placeholder is ONLY needed for OP_CHECKMULTISIG (off-by-one bug),
+  // NOT for OP_CHECKSIG — adding it leaves an extra item on the stack → script error.
   const witnessData = sigs.map(sig => {
-    if (!sig) {
-      // No sig — empty witness (shouldn't happen but safe fallback)
-      return new Uint8Array([0x00]);
-    }
-    const emptyItem  = new Uint8Array([0x00]);                            // OP_0 placeholder
+    if (!sig) return new Uint8Array([0x00]); // 0 items — unsigned input fallback
     const sigItem    = concat([encodeVarInt(sig.length), sig]);
     const scriptItem = concat([encodeVarInt(redeemScript.length), redeemScript]);
-    return concat([new Uint8Array([0x03]), emptyItem, sigItem, scriptItem]); // 3 witness items
+    return concat([new Uint8Array([0x02]), sigItem, scriptItem]); // 2 witness items
   });
 
-  // Assemble final segwit tx
-  const segwitMarker = new Uint8Array([0x00, 0x01]); // marker + flag
+  // Assemble final segwit tx: version | 0x00 0x01 | inputs | outputs | witness… | locktime
+  const segwitMarker = new Uint8Array([0x00, 0x01]);
   const finalTx = concat([
     version,
     segwitMarker,
