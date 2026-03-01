@@ -513,10 +513,12 @@ function setLang(l) {
   applyLang();
 }
 function applyLang() {
-  // Nav tabs
-  document.querySelector('[data-page="dashboard"]').textContent = t('dashboard');
-  document.querySelector('[data-page="create"]').textContent    = t('create');
-  document.querySelector('[data-page="archive"]').textContent   = t('archive');
+  // Nav tabs — use a span inside to avoid killing onclick
+  const tabs = document.querySelectorAll('.nav-tab[data-page]');
+  tabs.forEach(tab => {
+    const key = {'dashboard':'dashboard','create':'create','archive':'archive'}[tab.dataset.page];
+    if (key) tab.textContent = t(key);
+  });
   // Stats
   document.getElementById('s-total-label').textContent  = t('totalAnchors');
   document.getElementById('s-active-label').textContent = t('active');
@@ -545,8 +547,11 @@ function applyLang() {
   document.getElementById('fbtn-mine').textContent      = t('mine');
   // Wallet btn
   if (!S.wallet) document.getElementById('walletLabel').textContent = t('connect');
-  document.getElementById('discItem').textContent = t('disconnect');
-  document.getElementById('diagItem').textContent = t('diagnose');
+  // Use innerHTML to preserve onclick on menu items
+  const discEl = document.getElementById('discItem');
+  const diagEl = document.getElementById('diagItem');
+  if (discEl) { discEl.onclick = disconnect; discEl.querySelector('span') ? discEl.querySelector('span').textContent = t('disconnect') : discEl.textContent = t('disconnect'); }
+  if (diagEl) { diagEl.onclick = diagnose; }
   refresh();
 }
 
