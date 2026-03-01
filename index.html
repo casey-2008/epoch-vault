@@ -6,7 +6,8 @@
 <title>SatAnchor — Bitcoin Time Protocol</title>
 
 <!-- Bitcoin JS library via CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bitcoinjs-lib/5.2.0/bitcoinjs-lib.min.js"></script>
+<!-- bitcoinjs-lib via bundle — supports Taproot/PSBT v0 -->
+<!-- no external bitcoin lib needed -->
 
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 
@@ -1637,66 +1638,55 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
   if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
-  // 1. Get UTXOs directly from OP_WALLET (their own node, no external API)
+  // 1. Get UTXOs from OP_WALLET
   let utxos;
   try {
     utxos = await provider.getBitcoinUtxos();
-    console.log('OP_WALLET UTXOs:', utxos);
+    console.log('UTXOs:', utxos);
   } catch(e) {
-    throw new Error('Failed to get UTXOs from OP_WALLET: ' + e.message);
+    throw new Error('Failed to get UTXOs: ' + e.message);
   }
   if (!utxos || utxos.length === 0) {
-    throw new Error('No UTXOs found. Get tBTC at: https://faucet.opnet.org/');
+    throw new Error('No UTXOs. Get tBTC at: https://faucet.opnet.org/');
   }
 
-  // 2. Select UTXOs to cover amount + fee
+  // 2. Select UTXOs
   const FEE = 3000;
-  const need = amountSats + FEE;
   let selected = [], total = 0;
   for (const u of utxos) {
     selected.push(u);
     total += parseInt(u.value);
-    if (total >= need) break;
+    if (total >= amountSats + FEE) break;
   }
-  if (total < need) {
-    throw new Error(
-      `Insufficient balance. Have: ${total.toLocaleString()} sats, ` +
-      `need: ${need.toLocaleString()} sats.`
-    );
+  if (total < amountSats + FEE) {
+    throw new Error(`Not enough funds: have ${total} sats, need ${amountSats + FEE}`);
   }
 
   const changeAmount = total - amountSats - FEE;
   const selfAddress = STATE.wallet.address;
 
-  // 3. Get pubkey for signing
-  let pubkeyHex = STATE.wallet.pubkey || '';
-  if (!pubkeyHex) {
-    try { pubkeyHex = await provider.getPublicKey(); } catch(_) {}
+  // 3. Build PSBT using bitcoinjs-lib
+  let psbtHex;
+  try {
+    psbtHex = await buildTaprootPSBT(selected, toAddress, amountSats, changeAmount, selfAddress);
+    console.log('PSBT built, hex length:', psbtHex.length);
+  } catch(e) {
+    throw new Error('PSBT build failed: ' + e.message);
   }
-  console.log('pubkey:', pubkeyHex, 'length:', pubkeyHex.length);
 
-  // 4. Build PSBT using OP_WALLET's Taproot address format
-  // OP_WALLET uses "opt1p..." prefix internally but signs standard Taproot
-  // The scriptPubKey hex from UTXO is the ground truth
-  const psbtBytes = await buildOPNetPSBT(selected, toAddress, amountSats, changeAmount, selfAddress, pubkeyHex);
-  const psbtHex = bytesToHex(psbtBytes);
-  console.log('PSBT hex length:', psbtHex.length);
-
-  // 5. Sign via OP_WALLET
+  // 4. Sign
   notify('Approve in OP_WALLET...', 'Check the OP_WALLET popup', 'info');
   await new Promise(r => setTimeout(r, 200));
 
   let signedPsbt;
   try {
-    // For Taproot (opt1p/tb1p): let OP_WALLET auto-detect signing key
-    // Do NOT pass toSignInputs — wallet knows which key matches its own UTXOs
     signedPsbt = await Promise.race([
       provider.signPsbt(psbtHex, { autoFinalized: true }),
       new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('OP_WALLET signPsbt timed out after 30s')), 30000)
+        setTimeout(() => reject(new Error('signPsbt timed out after 30s')), 30000)
       )
     ]);
-    console.log('signPsbt result:', typeof signedPsbt, signedPsbt?.length);
+    console.log('signPsbt OK, result length:', signedPsbt?.length);
   } catch(e) {
     console.error('signPsbt error:', e);
     if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) {
@@ -1705,527 +1695,142 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
     throw new Error('signPsbt failed: ' + (e.message || String(e)));
   }
 
-  // 6. Broadcast via OP_WALLET's pushTx or pushPsbt
+  // 5. Broadcast
   notify('Broadcasting...', 'Sending to OPNet network', 'info');
   try {
-    // Try pushTx first (expects raw tx hex), then pushPsbt (expects psbt hex)
     let txid;
     try {
-      txid = await provider.pushTx({ rawtx: signedPsbt });
+      const res = await provider.pushTx({ rawtx: signedPsbt });
+      txid = typeof res === 'string' ? res : res?.txid || res?.hash;
     } catch(_) {
-      txid = await provider.pushPsbt(signedPsbt);
+      const res = await provider.pushPsbt(signedPsbt);
+      txid = typeof res === 'string' ? res : res?.txid || res?.hash;
     }
-    console.log('broadcast result:', txid);
-    const id = typeof txid === 'string' ? txid : txid?.txid || txid?.hash || null;
-    return id;
+    console.log('broadcast txid:', txid);
+    return txid || null;
   } catch(e) {
     throw new Error('Broadcast failed: ' + (e.message || String(e)));
   }
 }
 
-async function buildOPNetPSBT(utxos, toAddress, amountSats, changeAmount, changeAddress, pubkeyHex) {
-  // PSBT v0 structure for Taproot inputs
-  // Magic: "psbt" + 0xff separator
-  const PSBT_MAGIC = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]);
+async function buildTaprootPSBT(utxos, toAddress, amountSats, changeAmount, changeAddress) {
+  // Manual PSBT v0 builder for Taproot inputs
+  // Spec: https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki
+  // For Taproot: PSBT_IN_WITNESS_UTXO + PSBT_IN_TAP_INTERNAL_KEY
 
-  // Build unsigned transaction first
-  const inputs = utxos.map(u => ({
-    txid: u.transactionId,
-    vout: u.outputIndex,
-    scriptPubKeyHex: u.scriptPubKey.hex,
-    value: parseInt(u.value),
-    nonWitnessUtxoBase64: u.nonWitnessUtxoBase64,
-  }));
+  const pubkeyHex = STATE.wallet.pubkey || '';
+  // x-only pubkey: 32 bytes (drop 02/03 prefix from compressed key)
+  const xOnlyHex = pubkeyHex.length === 66 ? pubkeyHex.slice(2) : pubkeyHex.slice(0, 64);
+  const xOnly = xOnlyHex ? hexToBytes(xOnlyHex) : null;
+  console.log('xOnly pubkey:', xOnlyHex);
 
-  // Build outputs
-  const outputs = [];
-
-  // Output 0: to vault address (toAddress)
-  const toScript = addressToScriptPubKey(toAddress);
-  outputs.push({ value: amountSats, scriptHex: bytesToHex(toScript) });
-
-  // Output 1: change back to self
-  if (changeAmount >= 546) {
-    const changeScript = addressToScriptPubKey(changeAddress);
-    outputs.push({ value: changeAmount, scriptHex: bytesToHex(changeScript) });
+  // Helper: write a PSBT key-value pair
+  function kv(keyBytes, valueBytes) {
+    return concat([
+      encodeVarInt(keyBytes.length), keyBytes,
+      encodeVarInt(valueBytes.length), valueBytes,
+    ]);
   }
 
-  // Build raw unsigned tx bytes
-  const rawTx = buildRawTx(inputs, outputs);
+  // Build unsigned transaction
+  const version  = new Uint8Array([0x02, 0x00, 0x00, 0x00]);
+  const locktime = new Uint8Array([0x00, 0x00, 0x00, 0x00]);
+  const seq      = new Uint8Array([0xfd, 0xff, 0xff, 0xff]);
+
+  const txInputs = utxos.map(u => concat([
+    hexToBytes(u.transactionId).reverse(),
+    uint32LE(u.outputIndex),
+    new Uint8Array([0x00]), // empty scriptSig
+    seq,
+  ]));
+
+  const outputs = [];
+  const toScript = opnetAddressToScript(toAddress);
+  outputs.push(concat([uint64LE(amountSats), encodeVarInt(toScript.length), toScript]));
+  if (changeAmount >= 546) {
+    const chScript = opnetAddressToScript(changeAddress);
+    outputs.push(concat([uint64LE(changeAmount), encodeVarInt(chScript.length), chScript]));
+  }
+
+  const unsignedTx = concat([
+    version,
+    encodeVarInt(txInputs.length), ...txInputs,
+    encodeVarInt(outputs.length),  ...outputs,
+    locktime,
+  ]);
 
   // Assemble PSBT
-  const parts = [PSBT_MAGIC];
+  const MAGIC = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]); // "psbtÿ"
+  const parts = [MAGIC];
 
-  // Global: PSBT_GLOBAL_UNSIGNED_TX (key=0x01 0x00)
-  parts.push(new Uint8Array([0x01, 0x00]));
-  parts.push(encodeVarInt(rawTx.length));
-  parts.push(rawTx);
-  parts.push(new Uint8Array([0x00])); // end globals
+  // === GLOBAL MAP ===
+  // PSBT_GLOBAL_UNSIGNED_TX (key type 0x00)
+  parts.push(kv(new Uint8Array([0x00]), unsignedTx));
+  parts.push(new Uint8Array([0x00])); // separator
 
-  // Per-input maps
-  for (const inp of inputs) {
-    // PSBT_IN_NON_WITNESS_UTXO (key type 0x00) — full prev tx
-    if (inp.nonWitnessUtxoBase64) {
-      const prevTxBytes = base64ToBytes(inp.nonWitnessUtxoBase64);
-      parts.push(new Uint8Array([0x01, 0x00])); // key length 1, key type 0x00
-      parts.push(encodeVarInt(prevTxBytes.length));
-      parts.push(prevTxBytes);
+  // === INPUT MAPS ===
+  for (const u of utxos) {
+    const scriptPubKey = hexToBytes(u.scriptPubKey.hex);
+    const value = parseInt(u.value);
+
+    // PSBT_IN_WITNESS_UTXO (key type 0x01)
+    const witnessUtxo = concat([uint64LE(value), encodeVarInt(scriptPubKey.length), scriptPubKey]);
+    parts.push(kv(new Uint8Array([0x01]), witnessUtxo));
+
+    // PSBT_IN_TAP_INTERNAL_KEY (key type 0x15) — x-only pubkey, 32 bytes
+    if (xOnly && xOnly.length === 32) {
+      parts.push(kv(new Uint8Array([0x15]), xOnly));
     }
-    // PSBT_IN_WITNESS_UTXO (key type 0x01) — for segwit/taproot
-    const witnessOut = buildTxOutputBytes(inp.value, hexToBytes(inp.scriptPubKeyHex));
-    parts.push(new Uint8Array([0x01, 0x01]));
-    parts.push(encodeVarInt(witnessOut.length));
-    parts.push(witnessOut);
 
-    parts.push(new Uint8Array([0x00])); // end this input
+    parts.push(new Uint8Array([0x00])); // separator
   }
 
-  // Per-output maps (empty for each output)
+  // === OUTPUT MAPS (empty) ===
   for (let i = 0; i < outputs.length; i++) {
     parts.push(new Uint8Array([0x00]));
   }
 
-  // Concatenate all parts
-  const total = parts.reduce((s, p) => s + p.length, 0);
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const p of parts) { result.set(p, offset); offset += p.length; }
-  return result;
+  const psbt = concat(parts);
+  return bytesToHex(psbt);
 }
 
-function buildRawTx(inputs, outputs) {
-  const version = new Uint8Array([0x02, 0x00, 0x00, 0x00]);
-  const locktime = new Uint8Array([0x00, 0x00, 0x00, 0x00]);
-  const seq = new Uint8Array([0xfd, 0xff, 0xff, 0xff]);
-
-  const inCount = encodeVarInt(inputs.length);
-  const inputBytes = inputs.map(inp => {
-    const txid = hexToBytes(inp.txid).reverse();
-    const vout = new Uint8Array(4);
-    new DataView(vout.buffer).setUint32(0, inp.vout, true);
-    const scriptSig = new Uint8Array([0x00]); // empty for segwit
-    return concat([txid, vout, scriptSig, seq]);
-  });
-
-  const outCount = encodeVarInt(outputs.length);
-  const outputBytes = outputs.map(out => {
-    const scriptBytes = hexToBytes(out.scriptHex);
-    return buildTxOutputBytes(out.value, scriptBytes);
-  });
-
-  return concat([version, inCount, ...inputBytes, outCount, ...outputBytes, locktime]);
+function uint32LE(n) {
+  const b = new Uint8Array(4);
+  new DataView(b.buffer).setUint32(0, n, true);
+  return b;
 }
 
-function buildTxOutputBytes(valueSats, scriptPubKey) {
-  const val = new Uint8Array(8);
-  let v = BigInt(valueSats);
-  for (let i = 0; i < 8; i++) { val[i] = Number(v & 0xffn); v >>= 8n; }
-  return concat([val, encodeVarInt(scriptPubKey.length), scriptPubKey]);
+function uint64LE(n) {
+  const b = new Uint8Array(8);
+  let v = BigInt(n);
+  for (let i = 0; i < 8; i++) { b[i] = Number(v & 0xffn); v >>= 8n; }
+  return b;
 }
 
-function addressToScriptPubKey(address) {
-  // Handle both standard bech32 (tb1q/bc1q) and OP_NET custom (opt1p) addresses
-  // All are bech32/bech32m encoded — decode witness program
+function opnetAddressToScript(address) {
+  // Decode bech32/bech32m address to scriptPubKey
+  // Supports: tb1q (P2WPKH/P2WSH v0), tb1p (P2TR v1), opt1p (OPNet custom)
   try {
-    const witProg = bech32Decode(address);
-    // Determine witness version from address
-    // tb1q/bc1q = v0 (OP_0), tb1p/opt1p = v1 (OP_1 = 0x51)
-    const isV1 = address.includes('1p') || address.startsWith('opt1');
-    const witVer = isV1 ? 0x51 : 0x00;
-    return new Uint8Array([witVer, witProg.length, ...witProg]);
+    const lower = address.toLowerCase();
+    const sep = lower.lastIndexOf('1');
+    const dataChars = lower.slice(sep + 1, -6); // strip checksum
+    const data = dataChars.split('').map(c => BECH32_CHARSET.indexOf(c));
+    const witVer = data[0]; // 0 = OP_0, 1 = OP_1 (Taproot)
+    const payload = convertBits(data.slice(1), 5, 8, false);
+    const prog = new Uint8Array(payload);
+    // OP_0 = 0x00, OP_1 = 0x51, OP_2 = 0x52, etc.
+    const opcode = witVer === 0 ? 0x00 : (0x50 + witVer);
+    const script = new Uint8Array([opcode, prog.length, ...prog]);
+    console.log('script for', address, ':', bytesToHex(script));
+    return script;
   } catch(e) {
-    console.error('addressToScriptPubKey failed for:', address, e);
-    return new Uint8Array([0x51, 0x20, ...new Uint8Array(32)]); // fallback
+    console.error('opnetAddressToScript failed:', address, e.message);
+    throw new Error('Cannot decode address: ' + address);
   }
 }
 
-function base64ToBytes(b64) {
-  const bin = atob(b64);
-  return new Uint8Array(bin.split('').map(c => c.charCodeAt(0)));
-}
 
-function concat(arrays) {
-  const total = arrays.reduce((s, a) => s + a.length, 0);
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const a of arrays) { out.set(a, off); off += a.length; }
-  return out;
-}
 
-function bech32Decode(address) {
-  const lower = address.toLowerCase();
-  const sepIdx = lower.lastIndexOf('1');
-  const data = lower.slice(sepIdx+1, -6).split('').map(c => BECH32_CHARSET.indexOf(c));
-  const decoded = convertBits(data.slice(1), 5, 8, false); // skip witness version
-  return new Uint8Array(decoded);
-}
 
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  event.target.classList.add('active');
-
-  if (id === 'archive') renderArchive();
-}
-
-function setCondTab(tab) {
-  STATE.condTab = tab;
-  document.querySelectorAll('.cond-tab').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('cond-block').style.display = tab==='block' ? 'block' : 'none';
-  document.getElementById('cond-date').style.display = tab==='date' ? 'block' : 'none';
-  document.getElementById('cond-halving').style.display = tab==='halving' ? 'block' : 'none';
-  updatePreview();
-}
-
-function toggleEncrypt() {
-  STATE.encryptOn = !STATE.encryptOn;
-  const row = document.getElementById('encryptRow');
-  row.classList.toggle('on', STATE.encryptOn);
-}
-
-async function updatePreview() {
-  const msg = document.getElementById('f-msg').value || 'Your message here...';
-  const prevMsg = document.getElementById('prev-msg');
-  prevMsg.textContent = STATE.encryptOn ? '[ENCRYPTED]' : `"${msg}"`;
-  prevMsg.style.color = STATE.encryptOn ? 'var(--amber)' : 'var(--text)';
-
-  let cond = 'Set condition above';
-  if (STATE.condTab === 'block') {
-    const v = document.getElementById('f-block').value;
-    if (v) cond = `Unlocks at block #${Number(v).toLocaleString()}`;
-  } else if (STATE.condTab === 'date') {
-    const v = document.getElementById('f-date').value;
-    if (v) cond = `Unlocks on ${v}`;
-  } else {
-    const v = document.getElementById('f-halving').value;
-    cond = `Unlocks at halving #${v}`;
-  }
-  document.getElementById('prev-cond').textContent = cond;
-
-  if (msg.length > 3) {
-    const hash = await sha256(msg);
-    document.getElementById('prev-hash').textContent = 'SHA256: ' + hash.slice(0,32) + '...';
-  }
-}
-
-function renderTxProgress(steps) {
-  return `<div class="tx-progress">${steps.map(s =>
-    `<div class="tx-step ${s.state}" id="${s.id}">
-      <div class="step-dot"></div>${s.label}
-    </div>`
-  ).join('')}</div>`;
-}
-
-function setStep(id, state) {
-  const el = document.getElementById(id);
-  if (el) el.className = `tx-step ${state}`;
-}
-
-/* ═══════════════════════════════════════════════════
-   REFRESH UI
-═══════════════════════════════════════════════════ */
-function refreshAll() {
-  refreshStats();
-  refreshMyVaults();
-  if (document.getElementById('page-archive').classList.contains('active'))
-    renderArchive();
-}
-
-function refreshStats() {
-  const vaults = STATE.vaults;
-  const mine = STATE.wallet ? vaults.filter(v=>v.owner===STATE.wallet.address) : vaults;
-  const unlockable = mine.filter(v => isUnlockable(v));
-
-  document.getElementById('stat-total').textContent = mine.length;
-  document.getElementById('stat-active').textContent = mine.filter(v=>v.status==='active').length;
-  document.getElementById('stat-unlockable').textContent = unlockable.length;
-
-  const nextVault = mine
-    .filter(v=>v.status!=='spent')
-    .sort((a,b)=>a.cltvValue-b.cltvValue)[0];
-  document.getElementById('stat-next').textContent = nextVault
-    ? (nextVault.cltvValue < 500000000
-        ? '#' + nextVault.cltvValue.toLocaleString()
-        : new Date(nextVault.cltvValue*1000).getFullYear())
-    : '—';
-}
-
-function refreshMyVaults() {
-  const container = document.getElementById('myVaultsList');
-  const vaults = STATE.wallet
-    ? STATE.vaults.filter(v=>v.owner===STATE.wallet.address)
-    : [];
-
-  document.getElementById('myVaultCount').textContent = vaults.length;
-
-  if (!STATE.wallet) {
-    container.innerHTML = `
-      <div class="connect-prompt">
-        <div class="cp-title">Connect your wallet to begin</div>
-        <div class="cp-sub">Connect UniSat or OP_NET wallet to create<br>and manage your time-locked vaults.</div>
-        <div class="cp-btns">
-          <button class="btn-secondary" onclick="connectWallet('unisat')">🟠 UniSat</button>
-          <button class="btn-secondary" onclick="connectWallet('opnet')">🔵 OP_NET</button>
-        </div>
-      </div>`;
-    return;
-  }
-
-  if (vaults.length === 0) {
-    container.innerHTML = `<div class="empty"><span class="empty-icon">⬡</span>No vaults yet — <span style="color:var(--gold);cursor:pointer;" onclick="showPageDirect('create')">create your first</span></div>`;
-    return;
-  }
-
-  container.innerHTML = vaults.map((v,i) => `
-    <div class="vault-row" onclick="openVaultModal('${v.id}')" style="animation-delay:${i*0.06}s">
-      <div class="vr-indicator ${v.encrypted?'encrypted':'public'}"></div>
-      <div class="vr-id">ID: <span>${v.id.slice(0,8)}...</span></div>
-      <div class="vr-msg ${v.encrypted?'enc':''}">${v.encrypted ? '🔒 Encrypted message' : `"${v.message}"`}</div>
-      <div class="vr-cond"><strong>${v.condLabel}</strong>${isUnlockable(v)?'<br><span style="color:var(--amber)">Ready!</span>':''}</div>
-      <span class="status-pill ${getStatus(v)}">${getStatus(v)}</span>
-    </div>`).join('');
-}
-
-function showPageDirect(id) {
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
-  document.querySelectorAll('.nav-tab')[id==='dashboard'?0:id==='create'?1:2].classList.add('active');
-}
-
-function getStatus(v) {
-  if (v.status === 'spent') return 'spent';
-  if (isUnlockable(v)) return 'unlockable';
-  if (v.txid) return 'active';
-  return 'pending';
-}
-
-function isUnlockable(v) {
-  if (v.cltvValue < 500000000) return STATE.currentBlock >= v.cltvValue;
-  return Math.floor(Date.now()/1000) >= v.cltvValue;
-}
-
-/* ═══════════════════════════════════════════════════
-   ARCHIVE
-═══════════════════════════════════════════════════ */
-function filterArchive(filter, btn) {
-  STATE.archiveFilter = filter;
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  renderArchive();
-}
-
-function renderArchive() {
-  let vaults = [...STATE.vaults];
-
-  if (STATE.archiveFilter === 'mine' && STATE.wallet)
-    vaults = vaults.filter(v=>v.owner===STATE.wallet.address);
-  else if (['pending','active','unlockable','spent'].includes(STATE.archiveFilter))
-    vaults = vaults.filter(v=>getStatus(v)===STATE.archiveFilter);
-
-  document.getElementById('archiveCount').textContent = vaults.length;
-
-  const tbody = document.getElementById('archiveBody');
-  if (vaults.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><span class="empty-icon">⬡</span>No vaults</div></td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = vaults.map(v => {
-    const mine = STATE.wallet && v.owner === STATE.wallet.address;
-    return `<tr class="${mine?'mine':''}" onclick="openVaultModal('${v.id}')">
-      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${v.id.slice(0,12)}...</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${v.encrypted?'🔒 Encrypted':v.message}</td>
-      <td>${v.condLabel}</td>
-      <td><span class="status-pill ${getStatus(v)}">${getStatus(v)}</span></td>
-      <td>${v.encrypted?'<span style="color:var(--amber)">encrypted</span>':'public'}</td>
-      <td>${v.network}</td>
-      <td style="color:var(--muted)">${timeAgo(v.createdAt)}</td>
-    </tr>`;
-  }).join('');
-}
-
-/* ═══════════════════════════════════════════════════
-   VAULT MODAL
-═══════════════════════════════════════════════════ */
-function openVaultModal(id) {
-  const v = STATE.vaults.find(v=>v.id===id);
-  if (!v) return;
-
-  document.getElementById('mTitle').textContent = `Vault ${v.id.slice(0,8)}...`;
-
-  const rows = [
-    ['Anchor ID', v.id],
-    ['Network', v.network],
-    ['Status', `<span class="status-pill ${getStatus(v)}">${getStatus(v)}</span>`],
-    ['Condition', v.condLabel],
-    ['Address', `<a class="txid-link" href="https://mempool.space/testnet/address/${v.address}" target="_blank">${v.address||'—'}</a>`],
-    ['Amount', v.amount ? `${v.amount.toLocaleString()} sats` : '—'],
-    ['Commitment', v.msgHash ? v.msgHash.slice(0,32)+'...' : '—'],
-    ['Owner', v.owner ? truncate(v.owner) : '—'],
-  ];
-
-  if (v.txid) rows.push(['TX', `<a class="txid-link" href="https://mempool.space/testnet/tx/${v.txid}" target="_blank">${truncate(v.txid,20)}</a>`]);
-
-  let body = rows.map(([k,val])=>`
-    <div class="modal-row">
-      <span class="modal-key">${k}</span>
-      <span class="modal-val">${val}</span>
-    </div>`).join('');
-
-  // Message reveal
-  body += `<div class="msg-reveal">
-    <div class="msg-reveal-label">Message</div>`;
-
-  if (v.encrypted) {
-    body += `<div class="msg-reveal-text enc" id="msgRevealText">🔒 Encrypted — enter key below to reveal</div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <input type="text" class="field-input" id="decryptKeyInput" placeholder="Paste encryption key..." style="flex:1;">
-        <button class="btn-secondary" onclick="revealMsg('${id}')">Reveal</button>
-      </div>`;
-  } else {
-    body += `<div class="msg-reveal-text">"${v.message}"</div>`;
-  }
-  body += '</div>';
-
-  document.getElementById('mBody').innerHTML = body;
-
-  // Actions
-  const mine = STATE.wallet && v.owner === STATE.wallet.address;
-  let actions = `<button class="btn-secondary" onclick="copyText('${v.address}',this)">Copy Address</button>`;
-  if (mine && isUnlockable(v)) {
-    actions += `<button class="btn-primary" style="flex:1;" onclick="unlockVault('${id}')">Unlock & Claim BTC →</button>`;
-  }
-  document.getElementById('mActions').innerHTML = actions;
-
-  document.getElementById('vaultModal').classList.add('open');
-}
-
-async function revealMsg(id) {
-  const v = STATE.vaults.find(v=>v.id===id);
-  const key = document.getElementById('decryptKeyInput').value.trim();
-  const el = document.getElementById('msgRevealText');
-  if (!key) { el.textContent = 'Enter key first'; return; }
-  try {
-    const plain = await decryptMessage(v.encBlob, key);
-    el.className = 'msg-reveal-text';
-    el.textContent = `"${plain}"`;
-  } catch(e) {
-    el.textContent = '❌ Wrong key or corrupted data';
-  }
-}
-
-async function unlockVault(id) {
-  const v = STATE.vaults.find(vv=>vv.id===id);
-  if (!v || !STATE.wallet) return;
-
-  notify('Unlock initiated', 'Building spending transaction...', 'info');
-
-  try {
-    const utxos = await checkUtxo(v.address);
-    if (!utxos || utxos.length === 0) {
-      notify('No funds', 'Vault address has no confirmed UTXOs', 'warning'); return;
-    }
-    // Build unlock tx (simplified)
-    notify('Sign required', 'Approve the transaction in your wallet', 'info');
-    // TODO: full CLTV spending tx with witness
-    notify('Coming soon', 'Full unlock tx signing in next update', 'info');
-  } catch(e) {
-    notify('Unlock failed', e.message, 'error');
-  }
-}
-
-function closeModal() {
-  document.getElementById('vaultModal').classList.remove('open');
-}
-function closeModalOuter(e) {
-  if (e.target.id==='vaultModal') closeModal();
-}
-
-/* ═══════════════════════════════════════════════════
-   NOTIFICATIONS
-═══════════════════════════════════════════════════ */
-function notify(title, sub, type='info') {
-  const icons = { success:'✓', error:'✕', warning:'⚠', info:'ℹ' };
-  const wrap = document.getElementById('notifWrap');
-  const el = document.createElement('div');
-  el.className = `notif ${type}`;
-  el.innerHTML = `<div class="notif-icon">${icons[type]}</div>
-    <div><div class="notif-text">${title}</div>${sub?`<div class="notif-sub">${sub}</div>`:''}</div>`;
-  wrap.appendChild(el);
-  setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateX(20px)';
-    el.style.transition='all 0.3s'; setTimeout(()=>el.remove(), 300); }, 4000);
-}
-
-/* ═══════════════════════════════════════════════════
-   UTILS
-═══════════════════════════════════════════════════ */
-function truncate(str, n=12) {
-  if (!str) return '—';
-  if (str.length <= n*2+3) return str;
-  return str.slice(0,n) + '...' + str.slice(-6);
-}
-
-function timeAgo(ts) {
-  const s = Math.floor((Date.now()-ts)/1000);
-  if (s<60) return 'just now';
-  if (s<3600) return Math.floor(s/60)+'m ago';
-  if (s<86400) return Math.floor(s/3600)+'h ago';
-  return Math.floor(s/86400)+'d ago';
-}
-
-async function copyText(text, btn) {
-  await navigator.clipboard.writeText(text);
-  if (btn) { const orig=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=orig,1500); }
-}
-
-/* ═══════════════════════════════════════════════════
-   WALLET DIAGNOSTICS
-═══════════════════════════════════════════════════ */
-function debugWallets() {
-  document.getElementById('walletMenu').classList.remove('open');
-  const checks = [
-    ['window.unisat',    typeof window.unisat],
-    ['window.opnet',     typeof window.opnet],
-    ['window.opwallet',  typeof window.opwallet],
-    ['window.bitcoin',   typeof window.bitcoin],
-  ];
-  const found = checks.filter(([,t]) => t !== 'undefined');
-  const missing = checks.filter(([,t]) => t === 'undefined');
-
-  let msg = '';
-  if (found.length > 0) msg += 'Found: ' + found.map(([k])=>k).join(', ');
-  if (missing.length > 0) msg += (msg?' · ':'') + 'Missing: ' + missing.map(([k])=>k).join(', ');
-
-  notify('Wallet detection', msg || 'No wallets detected', found.length > 0 ? 'success' : 'error');
-
-  // Log full details to console for debugging
-  console.group('SatAnchor — Wallet Detection');
-  checks.forEach(([k,t]) => console.log(k, '→', t, t!=='undefined' ? window[k.split('.')[1]] : ''));
-  console.groupEnd();
-  notify('Console details', 'Open DevTools (F12) → Console for full info', 'info');
-}
-
-/* ═══════════════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════════════ */
-async function init() {
-  loadVaults();
-  await fetchBlockHeight();
-  setInterval(fetchBlockHeight, 30000); // refresh every 30s
-  refreshAll();
-  updatePreview();
-
-  // Check for saved wallet connection hint
-  const savedType = localStorage.getItem('satanchor_wallet_type');
-  if (savedType) {
-    notify('Reconnect wallet', `Previously used ${savedType} — click Connect`, 'info');
-  }
-}
-
-init();
 </script>
-</body>
-</html>
+
