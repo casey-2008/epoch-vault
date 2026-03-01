@@ -1493,24 +1493,29 @@ async function createVault() {
     }
 
     // 3. Build CLTV script
-    // For OP_NET (no pubkey available), we store script params but skip PSBT building
-    const pubkey = STATE.wallet.pubkey || '';
-    const hasFullPubkey = pubkey && pubkey.length >= 66; // 33 bytes compressed = 66 hex chars
-    if (!hasFullPubkey && STATE.wallet.type === 'unisat') {
-      throw new Error('Wallet did not provide public key. Please update UniSat extension.');
+    let pubkey = STATE.wallet.pubkey || '';
+
+    // Если pubkey ещё не получен — запрашиваем напрямую у провайдера
+    if (!pubkey || pubkey.length < 66) {
+      try {
+        const prov = STATE.wallet._provider || window.opnet || window.opwallet || window.unisat;
+        if (prov?.getPublicKey) pubkey = await prov.getPublicKey();
+        if (pubkey) STATE.wallet.pubkey = pubkey; // кэшируем
+      } catch(_) {}
+    }
+
+    const hasFullPubkey = pubkey && pubkey.length >= 66;
+    if (!hasFullPubkey) {
+      throw new Error(
+        'Wallet did not provide a compressed public key (33 bytes). ' +
+        'Try reconnecting your wallet or updating the extension.'
+      );
     }
 
     let redeemScript, redeemHex, vaultAddress, opReturnScript;
-    if (hasFullPubkey) {
-      redeemScript = buildCLTVRedeemScript(pubkey, cltvValue);
-      redeemHex = bytesToHex(redeemScript);
-      vaultAddress = await buildP2WSHAddress(redeemScript);
-    } else {
-      // OP_NET: no compressed pubkey available — vault stored locally, BTC sent to own address
-      redeemHex = '';
-      vaultAddress = STATE.wallet.address; // funds stay in wallet for now
-      notify('Note', 'OP_NET does not expose compressed pubkey — vault saved locally without P2WSH address', 'warning');
-    }
+    redeemScript = buildCLTVRedeemScript(pubkey, cltvValue);
+    redeemHex    = bytesToHex(redeemScript);
+    vaultAddress = await buildP2WSHAddress(redeemScript);
     opReturnScript = await buildOPReturnScript(vaultId, msgHash);
 
     setStep('s1', 'done');
@@ -1779,6 +1784,10 @@ function buildOPNetPSBT(utxos, toAddress, amountSats, changeAmount, changeAddres
   parts.push(rawTx);
   parts.push(new Uint8Array([0x00])); // end globals
 
+  // x-only pubkey (32 байта) для Taproot — сжатый pubkey без prefix-байта 02/03
+  const pubkeyHex_   = STATE.wallet?.pubkey || '';
+  const xOnlyPubkey  = pubkeyHex_.length >= 66 ? hexToBytes(pubkeyHex_).slice(1) : null;
+
   for (const u of utxos) {
     if (u.scriptPubKeyHex) {
       // PSBT_IN_WITNESS_UTXO (0x01) — обязателен для Taproot/SegWit
@@ -1787,7 +1796,27 @@ function buildOPNetPSBT(utxos, toAddress, amountSats, changeAmount, changeAddres
       parts.push(encodeVarInt(witOut.length));
       parts.push(witOut);
     }
-    parts.push(new Uint8Array([0x00])); // end input
+
+    // PSBT_IN_TAP_INTERNAL_KEY (0x15) — x-only pubkey 32 байта
+    // Без этого поля OP_WALLET не может сматчить Taproot ключ с инпутом
+    if (xOnlyPubkey) {
+      parts.push(new Uint8Array([0x01, 0x15]));
+      parts.push(new Uint8Array([xOnlyPubkey.length]));
+      parts.push(xOnlyPubkey);
+    }
+
+    // PSBT_IN_TAP_BIP32_DERIVATION (0x16)
+    // key = len(1 + 32) + 0x16 + x-only-pubkey, value = fingerprint(4) + path(0)
+    if (xOnlyPubkey) {
+      const tapDerKeyLen = 1 + xOnlyPubkey.length; // type byte + 32 bytes
+      parts.push(new Uint8Array([tapDerKeyLen, 0x16, ...xOnlyPubkey]));
+      // value: num_leaf_hashes(varint=0) + fingerprint(4 bytes) + derivation_path(0 steps)
+      const tapDerVal = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00]); // 0 hashes + zero fingerprint
+      parts.push(new Uint8Array([tapDerVal.length]));
+      parts.push(tapDerVal);
+    }
+
+    parts.push(new Uint8Array([0x00])); // end input map
   }
 
   for (let i = 0; i < outputs.length; i++) parts.push(new Uint8Array([0x00])); // output maps
