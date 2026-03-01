@@ -1495,12 +1495,17 @@ async function createVault() {
     // 3. Build CLTV script
     let pubkey = STATE.wallet.pubkey || '';
 
-    // Если pubkey ещё не получен — запрашиваем напрямую у провайдера
+    // Если pubkey ещё не получен — запрашиваем с таймаутом
     if (!pubkey || pubkey.length < 66) {
       try {
         const prov = STATE.wallet._provider || window.opnet || window.opwallet || window.unisat;
-        if (prov?.getPublicKey) pubkey = await prov.getPublicKey();
-        if (pubkey) STATE.wallet.pubkey = pubkey; // кэшируем
+        if (prov?.getPublicKey) {
+          pubkey = await Promise.race([
+            prov.getPublicKey(),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
+          ]);
+          if (pubkey) STATE.wallet.pubkey = pubkey;
+        }
       } catch(_) {}
     }
 
@@ -1523,13 +1528,11 @@ async function createVault() {
 
     // 4. Sign transaction via wallet
     let txid;
-    let rawTx;
 
     if (STATE.wallet.type === 'unisat') {
-      // UniSat: send BTC to vault address via sendBitcoin
-      // For full CLTV tx with OP_RETURN, we build a PSBT
       txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
     } else {
+      notify('Открой OP_WALLET', 'Должен появиться popup с подтверждением транзакции', 'info');
       txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
     }
 
@@ -1642,34 +1645,48 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
   if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
-  // OP_NET работает на своей сети (OPNet Testnet) и не принимает внешние PSBT.
-  // Правильный путь — sendBitcoin, как у UniSat.
+  const withTimeout = (promise, ms, label) => Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms/1000}s`)), ms)),
+  ]);
 
+  // sendBitcoin — стандартный метод (как у UniSat)
   if (typeof provider.sendBitcoin === 'function') {
     try {
-      const txid = await provider.sendBitcoin(toAddress, amountSats);
+      const txid = await withTimeout(
+        provider.sendBitcoin(toAddress, amountSats),
+        60000, 'sendBitcoin'
+      );
       if (txid) return txid;
     } catch(e) {
       if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
         throw new Error('Transaction cancelled by user');
+      if (/timed out/i.test(e.message))
+        throw new Error('OP_WALLET did not respond. Check the extension popup and try again.');
       console.warn('sendBitcoin failed:', e.message);
     }
   }
 
+  // transfer — альтернативный метод
   if (typeof provider.transfer === 'function') {
     try {
-      const txid = await provider.transfer({ to: toAddress, amount: amountSats });
+      const txid = await withTimeout(
+        provider.transfer({ to: toAddress, amount: amountSats }),
+        60000, 'transfer'
+      );
       if (txid) return typeof txid === 'string' ? txid : (txid?.txid || txid?.hash);
     } catch(e) {
       if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
         throw new Error('Transaction cancelled by user');
+      if (/timed out/i.test(e.message))
+        throw new Error('OP_WALLET did not respond. Check the extension popup and try again.');
       console.warn('transfer failed:', e.message);
     }
   }
 
   throw new Error(
-    'OP_NET wallet does not support sending BTC. ' +
-    'Please send ' + amountSats + ' sats manually to: ' + toAddress
+    'OP_NET wallet does not support sending BTC directly. ' +
+    'Please send ' + amountSats + ' sats manually to vault address: ' + toAddress
   );
 }
 
