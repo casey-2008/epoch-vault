@@ -111,7 +111,7 @@ header {
   padding:3px 9px; border:1px solid var(--border2);
   color: var(--muted2);
 }
-.net-badge.testnet { border-color:rgba(224,120,32,0.4); color:var(--amber); }
+.net-badge.mainnet { border-color:rgba(58,154,106,0.5); color:var(--green); }
 
 /* ═══ WALLET BUTTON ═══ */
 .btn-wallet {
@@ -747,7 +747,7 @@ select.field-input {
       <span>Block</span>
       <span id="liveBlock">—</span>
     </div>
-    <span class="net-badge testnet">Testnet</span>
+    <span class="net-badge mainnet">Mainnet</span>
     <div style="position:relative;">
       <button class="btn-wallet" id="walletBtn" onclick="toggleWalletMenu()">
         <span class="wallet-icon">⬡</span>
@@ -1038,8 +1038,8 @@ const STATE = {
   archiveFilter: 'all',
 };
 
-const NETWORK = 'testnet';
-const MEMPOOL_API = 'https://mempool.space/testnet/api';
+const NETWORK = 'mainnet';
+const MEMPOOL_API = 'https://mempool.space/api';
 const HALVING_BLOCKS = { 4:840000, 5:1050000, 6:1260000, 7:1470000, 8:1680000 };
 const PROTOCOL_MAGIC = 'SATANCHOR_V1';
 
@@ -1141,7 +1141,6 @@ async function buildP2WSHAddress(redeemScript) {
   // P2WSH: OP_0 <SHA256(redeemScript)>
   const scriptHash = await sha256Bytes(redeemScript);
 
-  // Bech32 encode for testnet (hrp = 'tb')
   const hrp = NETWORK === 'testnet' ? 'tb' : 'bc';
   return bech32Encode(hrp, 0, scriptHash);
 }
@@ -1254,9 +1253,9 @@ async function connectWallet(type) {
       const pubkey = await window.unisat.getPublicKey();
       const network = await window.unisat.getNetwork();
 
-      // Switch to testnet if needed
-      if (!network.includes('test')) {
-        try { await window.unisat.switchNetwork('testnet'); } catch(e) {}
+      // Switch to mainnet if needed
+      if (network.includes('test') || network.includes('regtest')) {
+        try { await window.unisat.switchNetwork('livenet'); } catch(e) {}
       }
 
       STATE.wallet = { type:'unisat', address:accounts[0], pubkey };
@@ -1290,33 +1289,29 @@ async function connectWallet(type) {
       let pubkey = '';
       try { pubkey = await provider.getPublicKey(); } catch(_) {}
 
-      // Switch to testnet if needed — bcrt1 = regtest, must be tb1 = testnet
-      // OP_WALLET network names: "regtest", "OPNet Testnet", "livenet"
-      // We need "OPNet Testnet" — addresses start with tb1...
+      // Switch to mainnet/livenet if needed
       let net = '';
       try { net = String(await provider.getNetwork()).toLowerCase(); } catch(_) {}
       console.log('OP_WALLET detected network:', net);
 
-      const isCorrectNet = net.includes('testnet') || net.includes('opnet testnet');
-      if (!isCorrectNet) {
-        // Try to switch — OP_WALLET uses "testnet" or "opnet testnet" as network name
+      const isMainnet = net.includes('livenet') || net.includes('mainnet') || net === '';
+      if (!isMainnet) {
         let switched = false;
-        for (const netName of ['testnet', 'OPNet Testnet', 'opnet_testnet']) {
+        for (const netName of ['livenet', 'mainnet', 'bitcoin']) {
           try {
             await provider.switchNetwork(netName);
             switched = true;
-            notify('Network switched', 'OP_WALLET → OPNet Testnet', 'info');
+            notify('Network switched', 'OP_WALLET → Mainnet', 'info');
             break;
           } catch(_) {}
         }
         if (!switched) {
           notify(
             'Switch network manually',
-            'In OP_WALLET: click Bitcoin logo (top right) → select "OPNet Testnet" → reconnect.',
+            'In OP_WALLET: click network selector → select "Mainnet" → reconnect.',
             'warning'
           );
         }
-        // Re-fetch address after network switch
         try {
           const newAccounts = await provider.requestAccounts();
           if (newAccounts?.[0]) accounts[0] = newAccounts[0];
@@ -1417,11 +1412,7 @@ async function broadcastTx(rawHex) {
 }
 
 async function checkUtxo(address) {
-  // For OP_NET Taproot addresses (tb1p...) use their testnet explorer
-  // For standard testnet (tb1q...) use mempool.space
-  const api = address.startsWith('tb1p')
-    ? `https://mempool.space/testnet/api/address/${address}/utxo`
-    : `${MEMPOOL_API}/address/${address}/utxo`;
+    const api = `${MEMPOOL_API}/address/${address}/utxo`;
   const res = await fetch(api);
   if (!res.ok) throw new Error(`UTXO fetch failed (${res.status}): ${await res.text()}`);
   return await res.json();
@@ -1475,7 +1466,7 @@ async function createVault() {
   statusEl.innerHTML = renderTxProgress([
     { id:'s1', label:'Generating anchor script', state:'active' },
     { id:'s2', label:'Signing transaction', state:'pending' },
-    { id:'s3', label:'Broadcasting to testnet', state:'pending' },
+    { id:'s3', label:'Broadcasting to mainnet', state:'pending' },
   ]);
 
   try {
@@ -1567,7 +1558,7 @@ async function createVault() {
         <div style="font-size:11px;color:var(--text);margin-bottom:6px;">ID: ${vaultId}</div>
         <div style="font-size:11px;color:var(--muted2);">Address: <span style="color:var(--text)">${vaultAddress}</span></div>
         ${txid ? `<div style="margin-top:8px;font-size:10px;">
-          TXID: <a class="txid-link" href="https://mempool.space/testnet/tx/${txid}" target="_blank">${truncate(txid,20)}</a>
+          TXID: <a class="txid-link" href="https://mempool.space/tx/${txid}" target="_blank">${truncate(txid,20)}</a>
         </div>` : ''}
       </div>`;
 
@@ -1607,7 +1598,7 @@ async function sendViaUniSat(toAddress, amountSats, opReturnScript) {
     // Get UTXOs from mempool
     const utxos = await checkUtxo(STATE.wallet.address);
     if (!utxos || utxos.length === 0) {
-      throw new Error('No UTXOs found. Get testnet BTC from a faucet first: https://testnet-faucet.mempool.co');
+      throw new Error('No UTXOs found. Fund your wallet with BTC first.');
     }
 
     // Build PSBT manually
@@ -1646,7 +1637,7 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
     throw new Error('Failed to get UTXOs from OP_WALLET: ' + e.message);
   }
   if (!utxos || utxos.length === 0) {
-    throw new Error('No UTXOs found. Get tBTC at: https://faucet.opnet.org/');
+    throw new Error('No UTXOs found. Fund your wallet with BTC first.');
   }
 
   // 2. Select UTXOs to cover amount + fee
@@ -2061,13 +2052,13 @@ function openVaultModal(id) {
     ['Network', v.network],
     ['Status', `<span class="status-pill ${getStatus(v)}">${getStatus(v)}</span>`],
     ['Condition', v.condLabel],
-    ['Address', `<a class="txid-link" href="https://mempool.space/testnet/address/${v.address}" target="_blank">${v.address||'—'}</a>`],
+    ['Address', `<a class="txid-link" href="https://mempool.space/address/${v.address}" target="_blank">${v.address||'—'}</a>`],
     ['Amount', v.amount ? `${v.amount.toLocaleString()} sats` : '—'],
     ['Commitment', v.msgHash ? v.msgHash.slice(0,32)+'...' : '—'],
     ['Owner', v.owner ? truncate(v.owner) : '—'],
   ];
 
-  if (v.txid) rows.push(['TX', `<a class="txid-link" href="https://mempool.space/testnet/tx/${v.txid}" target="_blank">${truncate(v.txid,20)}</a>`]);
+  if (v.txid) rows.push(['TX', `<a class="txid-link" href="https://mempool.space/tx/${v.txid}" target="_blank">${truncate(v.txid,20)}</a>`]);
 
   let body = rows.map(([k,val])=>`
     <div class="modal-row">
