@@ -4,740 +4,224 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SatAnchor — Bitcoin Time Protocol</title>
-
-<!-- Bitcoin JS library via CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/bitcoinjs-lib/5.2.0/bitcoinjs-lib.min.js"></script>
-
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
-
 <style>
-/* ═══════════════════════════════════════════════════
-   DESIGN SYSTEM
-═══════════════════════════════════════════════════ */
 :root {
-  --bg:       #080b0f;
-  --surface:  #0e1318;
-  --panel:    #131920;
-  --border:   #1e2830;
-  --border2:  #2a3540;
-  --gold:     #d4a843;
-  --gold2:    #f0c060;
-  --amber:    #e07820;
-  --blue:     #4a90c4;
-  --green:    #3a9a6a;
-  --red:      #c04040;
-  --text:     #dde4ec;
-  --muted:    #5a6878;
-  --muted2:   #8a9aaa;
-  --white:    #f0f4f8;
+  --bg:      #080b0f;
+  --surface: #0e1318;
+  --panel:   #131920;
+  --border:  #1e2830;
+  --border2: #2a3540;
+  --gold:    #d4a843;
+  --gold2:   #f0c060;
+  --amber:   #e07820;
+  --blue:    #4a90c4;
+  --green:   #3a9a6a;
+  --red:     #c04040;
+  --text:    #dde4ec;
+  --muted:   #5a6878;
+  --muted2:  #8a9aaa;
 }
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;font-size:13px;line-height:1.6;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 20% 10%,rgba(74,144,196,.04) 0%,transparent 60%),radial-gradient(ellipse 60% 40% at 80% 80%,rgba(212,168,67,.03) 0%,transparent 50%);pointer-events:none;z-index:0;}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 
-* { margin:0; padding:0; box-sizing:border-box; }
+/* HEADER */
+header{display:flex;align-items:center;justify-content:space-between;padding:0 40px;height:60px;border-bottom:1px solid var(--border);background:rgba(8,11,15,.95);backdrop-filter:blur(16px);position:sticky;top:0;z-index:200;}
+.logo-name{font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);letter-spacing:.05em;}
+.logo-tag{font-size:9px;letter-spacing:.3em;color:var(--muted);text-transform:uppercase;margin-left:10px;}
+.header-right{display:flex;align-items:center;gap:16px;}
+.block-live{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted2);}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 2s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
+.net-badge{font-size:9px;letter-spacing:.2em;text-transform:uppercase;padding:3px 9px;border:1px solid rgba(224,120,32,.4);color:var(--amber);}
+.btn-wallet{display:flex;align-items:center;gap:8px;padding:8px 16px;background:transparent;border:1px solid var(--border2);color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;cursor:pointer;transition:all .15s;position:relative;}
+.btn-wallet:hover{border-color:var(--gold);color:var(--gold);}
+.btn-wallet.connected{border-color:var(--green);color:var(--green);}
+.wallet-menu{position:absolute;top:calc(100% + 8px);right:0;background:var(--panel);border:1px solid var(--border2);min-width:210px;z-index:300;display:none;}
+.wallet-menu.open{display:block;}
+.wallet-menu-item{padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted2);transition:all .1s;border-bottom:1px solid var(--border);}
+.wallet-menu-item:last-child{border-bottom:none;}
+.wallet-menu-item:hover{background:var(--surface);color:var(--text);}
+.wallet-menu-item.danger{color:var(--red);}
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: 'DM Mono', monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  min-height: 100vh;
-}
+/* NAV */
+nav{display:flex;padding:0 40px;border-bottom:1px solid var(--border);}
+.nav-tab{padding:14px 20px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;position:relative;bottom:-1px;}
+.nav-tab:hover{color:var(--muted2);}
+.nav-tab.active{color:var(--gold);border-bottom-color:var(--gold);}
 
-/* Starfield background */
-body::before {
-  content:'';
-  position:fixed; inset:0;
-  background:
-    radial-gradient(ellipse 80% 50% at 20% 10%, rgba(74,144,196,0.04) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(212,168,67,0.03) 0%, transparent 50%);
-  pointer-events:none; z-index:0;
-}
+/* PAGES */
+.page{display:none;padding:40px;max-width:1100px;margin:0 auto;}
+.page.active{display:block;}
 
-/* ═══ SCROLLBAR ═══ */
-::-webkit-scrollbar { width:4px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--border2); border-radius:2px; }
+/* SECTION HEADER */
+.sh{display:flex;align-items:center;gap:12px;margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+.sh-title{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:var(--muted);}
+.sh-badge{font-size:9px;padding:2px 8px;border:1px solid var(--border2);color:var(--gold);}
 
-/* ═══ LAYOUT ═══ */
-.app { position:relative; z-index:1; }
+/* STATS */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:32px;}
+.stat{background:var(--panel);padding:24px;}
+.stat-num{font-family:'Playfair Display',serif;font-size:32px;color:var(--gold);display:block;margin-bottom:4px;}
+.stat-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);}
 
-/* ═══ HEADER ═══ */
-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding: 0 40px;
-  height: 60px;
-  border-bottom: 1px solid var(--border);
-  background: rgba(8,11,15,0.92);
-  backdrop-filter: blur(16px);
-  position: sticky; top:0; z-index:200;
-}
+/* HALVING */
+.halving{display:flex;gap:32px;align-items:center;background:var(--panel);border:1px solid var(--border);padding:24px;margin-bottom:32px;}
+.halv-n{font-family:'Playfair Display',serif;font-size:48px;color:var(--gold);line-height:1;}
+.halv-label{font-size:9px;letter-spacing:.25em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.halv-val{font-size:16px;color:var(--text);}
+.halv-sub{font-size:11px;color:var(--muted2);margin-top:4px;}
 
-.logo {
-  display:flex; align-items:baseline; gap:10px;
-}
-.logo-name {
-  font-family: 'Playfair Display', serif;
-  font-size: 20px;
-  color: var(--gold);
-  letter-spacing: 0.05em;
-}
-.logo-tag {
-  font-size: 9px;
-  letter-spacing: 0.3em;
-  color: var(--muted);
-  text-transform: uppercase;
-}
+/* TIMELINE */
+.timeline-bar{height:2px;background:var(--border);position:relative;margin:28px 0 36px;}
+.timeline-fill{position:absolute;left:0;top:0;height:100%;background:linear-gradient(90deg,var(--border2),var(--gold));transition:width .5s;}
+.timeline-pts{display:flex;justify-content:space-between;margin-top:-22px;}
+.t-pt{display:flex;flex-direction:column;align-items:center;gap:6px;}
+.t-dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--border2);background:var(--bg);position:relative;z-index:1;}
+.t-dot.done{border-color:var(--gold);background:var(--gold);}
+.t-dot.now{border-color:var(--amber);background:var(--bg);box-shadow:0 0 0 3px rgba(224,120,32,.2);}
+.t-lbl{font-size:9px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;}
+.t-blk{font-size:11px;color:var(--muted2);}
 
-.header-right {
-  display:flex; align-items:center; gap:16px;
-}
+/* ANCHOR ROWS */
+.anchor-row{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--border2);padding:18px 24px;margin-bottom:1px;display:grid;grid-template-columns:120px 1fr auto auto;gap:16px;align-items:center;cursor:pointer;transition:all .1s;animation:rowIn .3s ease forwards;opacity:0;}
+@keyframes rowIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+.anchor-row:hover{background:var(--surface);border-color:var(--border2);}
+.anchor-row.pub{border-left-color:var(--gold);}
+.anchor-row.enc{border-left-color:var(--amber);}
+.ar-id{font-size:10px;color:var(--muted);}
+.ar-id span{color:var(--gold);}
+.ar-msg{font-family:'Playfair Display',serif;font-size:15px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ar-msg.enc{font-family:'DM Mono',monospace;font-size:11px;font-style:normal;color:var(--muted);}
+.ar-cond{font-size:11px;color:var(--muted2);text-align:right;white-space:nowrap;}
+.ar-cond strong{display:block;color:var(--text);}
+.pill{font-size:9px;letter-spacing:.15em;text-transform:uppercase;padding:3px 8px;border:1px solid;white-space:nowrap;}
+.pill.pending{color:var(--muted);border-color:var(--border2);}
+.pill.active{color:var(--green);border-color:var(--green);}
+.pill.unlockable{color:var(--amber);border-color:var(--amber);animation:glow 2s ease-in-out infinite;}
+.pill.spent{color:var(--muted);border-color:var(--border);}
+@keyframes glow{0%,100%{box-shadow:0 0 0 transparent;}50%{box-shadow:0 0 8px rgba(224,120,32,.3);}}
 
-.block-live {
-  display:flex; align-items:center; gap:8px;
-  font-size:11px; color: var(--muted2);
-}
-.live-dot {
-  width:6px; height:6px; border-radius:50%;
-  background: var(--green);
-  animation: blink 2s ease-in-out infinite;
-}
-@keyframes blink {
-  0%,100%{opacity:1;} 50%{opacity:0.3;}
-}
-#liveBlock { color: var(--text); font-size:13px; }
+/* CONNECT PROMPT */
+.connect-prompt{border:1px solid var(--border);padding:48px;text-align:center;margin-bottom:32px;}
+.cp-title{font-family:'Playfair Display',serif;font-size:24px;color:var(--muted);margin-bottom:12px;}
+.cp-sub{font-size:11px;color:var(--muted);margin-bottom:28px;line-height:1.8;}
+.cp-btns{display:flex;gap:12px;justify-content:center;}
 
-.net-badge {
-  font-size:9px; letter-spacing:0.2em; text-transform:uppercase;
-  padding:3px 9px; border:1px solid var(--border2);
-  color: var(--muted2);
-}
-.net-badge.testnet { border-color:rgba(224,120,32,0.4); color:var(--amber); }
+/* CREATE PAGE */
+.create-layout{display:grid;grid-template-columns:1fr 360px;gap:32px;align-items:start;}
+.form-panel{background:var(--panel);border:1px solid var(--border);padding:32px;}
+.field{margin-bottom:22px;}
+.field-label{font-size:9px;letter-spacing:.25em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:8px;}
+.field-input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:12px 14px;outline:none;transition:border-color .15s;}
+.field-input:focus{border-color:var(--border2);}
+.field-input::placeholder{color:var(--muted);}
+textarea.field-input{min-height:90px;resize:vertical;font-family:'Playfair Display',serif;font-style:italic;font-size:15px;}
+select.field-input{appearance:none;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6878'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;}
+.cond-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);margin-bottom:12px;}
+.cond-tab{background:var(--surface);padding:10px;text-align:center;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);cursor:pointer;transition:all .1s;}
+.cond-tab:hover{color:var(--muted2);}
+.cond-tab.active{background:var(--panel);color:var(--gold);border-bottom:2px solid var(--gold);}
+.encrypt-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg);border:1px solid var(--border);cursor:pointer;transition:border-color .15s;margin-bottom:22px;}
+.encrypt-row:hover{border-color:var(--border2);}
+.encrypt-row.on{border-color:rgba(224,120,32,.5);}
+.toggle{width:36px;height:20px;background:var(--border2);border-radius:10px;position:relative;transition:background .2s;flex-shrink:0;}
+.toggle::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:var(--muted2);top:3px;left:3px;transition:all .2s;}
+.encrypt-row.on .toggle{background:rgba(224,120,32,.3);}
+.encrypt-row.on .toggle::after{transform:translateX(16px);background:var(--amber);}
+.btn-primary{width:100%;background:var(--gold);color:var(--bg);border:none;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;padding:16px;cursor:pointer;transition:all .15s;}
+.btn-primary:hover{background:var(--gold2);}
+.btn-primary:disabled{background:var(--border2);color:var(--muted);cursor:not-allowed;}
+.btn-sec{background:transparent;color:var(--muted2);border:1px solid var(--border2);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:10px 18px;cursor:pointer;transition:all .15s;}
+.btn-sec:hover{border-color:var(--text);color:var(--text);}
 
-/* ═══ WALLET BUTTON ═══ */
-.btn-wallet {
-  display:flex; align-items:center; gap:8px;
-  padding: 8px 16px;
-  background: transparent;
-  border: 1px solid var(--border2);
-  color: var(--muted2);
-  font-family: 'DM Mono', monospace;
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-  transition: all 0.15s;
-  position:relative;
-}
-.btn-wallet:hover { border-color: var(--gold); color: var(--gold); }
-.btn-wallet.connected { border-color: var(--green); color: var(--green); }
-.btn-wallet .wallet-icon { font-size:14px; }
-.wallet-addr { font-size:10px; opacity:0.8; }
+/* PREVIEW */
+.preview-panel{background:var(--panel);border:1px solid var(--border);padding:28px;position:sticky;top:80px;}
+.prev-vault{background:var(--bg);border:1px solid var(--border);padding:20px;margin-bottom:16px;}
+.prev-id{font-size:9px;color:var(--muted);margin-bottom:8px;letter-spacing:.08em;}
+.prev-msg{font-family:'Playfair Display',serif;font-size:16px;font-style:italic;min-height:24px;margin-bottom:10px;}
+.prev-cond{font-size:11px;color:var(--muted2);}
+.prev-hash{font-size:9px;color:var(--muted);margin-top:6px;word-break:break-all;letter-spacing:.04em;}
+.proto-box{background:var(--bg);border:1px solid var(--border);padding:14px;font-size:10px;color:var(--muted);line-height:1.9;}
+.proto-box span{color:var(--muted2);}
 
-/* Wallet dropdown */
-.wallet-menu {
-  position:absolute; top:calc(100% + 8px); right:0;
-  background: var(--panel);
-  border: 1px solid var(--border2);
-  min-width: 200px;
-  z-index:300;
-  display:none;
-}
-.wallet-menu.open { display:block; }
-.wallet-menu-item {
-  padding:12px 16px;
-  cursor:pointer;
-  display:flex; align-items:center; gap:10px;
-  font-size:11px; color: var(--muted2);
-  transition: all 0.1s;
-  border-bottom: 1px solid var(--border);
-}
-.wallet-menu-item:last-child { border-bottom:none; }
-.wallet-menu-item:hover { background:var(--surface); color:var(--text); }
-.wallet-menu-item.active { color:var(--green); }
-.wallet-menu-item.disconnect { color:var(--red); }
+/* TX PROGRESS */
+.tx-progress{background:var(--bg);border:1px solid var(--border);padding:18px;margin-top:14px;}
+.tx-step{display:flex;align-items:center;gap:12px;padding:7px 0;font-size:11px;color:var(--muted);}
+.tx-step.done{color:var(--green);}
+.tx-step.active{color:var(--text);}
+.tx-step.error{color:var(--red);}
+.step-dot{width:8px;height:8px;border-radius:50%;background:var(--border2);flex-shrink:0;}
+.tx-step.done .step-dot{background:var(--green);}
+.tx-step.active .step-dot{background:var(--blue);animation:blink 1s infinite;}
+.tx-step.error .step-dot{background:var(--red);}
 
-/* ═══ NAVIGATION ═══ */
-nav {
-  display:flex; align-items:center;
-  padding: 0 40px;
-  border-bottom: 1px solid var(--border);
-  gap:0;
-}
-.nav-tab {
-  padding: 14px 20px;
-  font-size: 11px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--muted);
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.15s;
-  position:relative; bottom:-1px;
-}
-.nav-tab:hover { color: var(--muted2); }
-.nav-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+/* SUCCESS / KEY BOX */
+.success-box{background:rgba(58,154,106,.08);border:1px solid rgba(58,154,106,.3);padding:16px;margin-top:14px;}
+.success-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--green);margin-bottom:8px;}
+.key-box{background:rgba(224,120,32,.06);border:1px solid rgba(224,120,32,.3);padding:16px;margin-top:12px;}
+.key-label{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--amber);margin-bottom:8px;}
+.key-val{font-size:10px;color:var(--text);word-break:break-all;line-height:1.7;}
+.copy-btn{font-size:9px;letter-spacing:.1em;padding:4px 10px;border:1px solid var(--border2);color:var(--muted);background:none;cursor:pointer;transition:all .1s;margin-top:8px;}
+.copy-btn:hover{color:var(--text);border-color:var(--text);}
+a.txlink{color:var(--blue);text-decoration:none;font-size:10px;word-break:break-all;}
+a.txlink:hover{text-decoration:underline;}
 
-/* ═══ MAIN ═══ */
-.page { display:none; padding:40px; max-width:1100px; margin:0 auto; }
-.page.active { display:block; }
+/* ARCHIVE */
+.filter-bar{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;}
+.fbtn{font-size:9px;letter-spacing:.15em;text-transform:uppercase;padding:5px 12px;border:1px solid var(--border2);color:var(--muted);background:transparent;cursor:pointer;transition:all .1s;}
+.fbtn:hover{color:var(--muted2);}
+.fbtn.active{color:var(--gold);border-color:var(--gold);}
+.archive-table{width:100%;border-collapse:collapse;}
+.archive-table th{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);font-weight:400;}
+.archive-table td{padding:13px 14px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted2);vertical-align:middle;}
+.archive-table tr{cursor:pointer;transition:background .1s;}
+.archive-table tr:hover td{background:var(--panel);}
+.archive-table tr.mine td{border-left:2px solid var(--gold);}
 
-/* ═══ SECTION HEADERS ═══ */
-.sec-head {
-  display:flex; align-items:center; gap:12px;
-  margin-bottom:24px;
-  padding-bottom:16px;
-  border-bottom:1px solid var(--border);
-}
-.sec-title {
-  font-size:10px; letter-spacing:0.3em;
-  text-transform:uppercase; color:var(--muted);
-}
-.sec-badge {
-  font-size:9px; padding:2px 8px;
-  border:1px solid var(--border2);
-  color:var(--gold);
-}
+/* MODAL */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);z-index:500;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;}
+.overlay.open{opacity:1;pointer-events:all;}
+.modal{background:var(--panel);border:1px solid var(--border2);width:540px;max-width:95vw;max-height:85vh;overflow-y:auto;transform:translateY(16px);transition:transform .2s;}
+.overlay.open .modal{transform:translateY(0);}
+.modal-head{padding:22px 26px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:start;}
+.modal-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--gold);}
+.modal-close{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;padding:2px;transition:color .1s;}
+.modal-close:hover{color:var(--text);}
+.modal-body{padding:22px 26px;}
+.modal-row{display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--border);gap:16px;}
+.modal-row:last-of-type{border-bottom:none;}
+.modal-key{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);flex-shrink:0;}
+.modal-val{font-size:11px;color:var(--text);text-align:right;word-break:break-all;font-family:'DM Mono',monospace;}
+.msg-box{background:var(--bg);border:1px solid var(--border);padding:18px;margin-top:14px;}
+.msg-box-label{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.msg-text{font-family:'Playfair Display',serif;font-size:17px;font-style:italic;line-height:1.5;}
+.msg-text.enc{font-family:'DM Mono',monospace;font-size:11px;font-style:normal;color:var(--muted);}
+.modal-actions{padding:0 26px 22px;display:flex;gap:10px;}
 
-/* ═══ DASHBOARD PAGE ═══ */
-.dash-grid {
-  display:grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr;
-  gap:1px; background:var(--border);
-  border:1px solid var(--border);
-  margin-bottom:40px;
-}
-.dash-stat {
-  background: var(--panel);
-  padding:24px;
-}
-.dash-stat-num {
-  font-family: 'Playfair Display', serif;
-  font-size:32px; color:var(--gold);
-  display:block; margin-bottom:4px;
-}
-.dash-stat-label {
-  font-size:9px; letter-spacing:0.2em;
-  text-transform:uppercase; color:var(--muted);
-}
-
-/* Timeline */
-.timeline-wrap { margin-bottom:40px; }
-.timeline-bar {
-  height:2px; background:var(--border);
-  position:relative; margin:32px 0 40px;
-}
-.timeline-fill {
-  position:absolute; left:0; top:0; height:100%;
-  background:linear-gradient(90deg, var(--border2), var(--gold));
-}
-.timeline-points {
-  display:flex; justify-content:space-between;
-  margin-top:-24px;
-}
-.t-pt {
-  display:flex; flex-direction:column; align-items:center; gap:6px;
-}
-.t-dot {
-  width:10px; height:10px; border-radius:50%;
-  border:2px solid var(--border2);
-  background:var(--bg); position:relative; z-index:1;
-}
-.t-dot.done { border-color:var(--gold); background:var(--gold); }
-.t-dot.now {
-  border-color:var(--amber); background:var(--bg);
-  box-shadow:0 0 0 3px rgba(224,120,32,0.2);
-}
-.t-lbl { font-size:9px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; white-space:nowrap; }
-.t-blk { font-size:11px; color:var(--muted2); }
-
-/* Recent vaults on dashboard */
-.vault-row {
-  background:var(--panel);
-  border:1px solid var(--border);
-  padding:20px 24px;
-  margin-bottom:1px;
-  display:grid;
-  grid-template-columns:16px 140px 1fr auto auto;
-  gap:16px; align-items:center;
-  cursor:pointer;
-  transition:background 0.1s, border-color 0.1s;
-  animation: rowIn 0.3s ease forwards;
-  opacity:0;
-}
-@keyframes rowIn {
-  from{opacity:0;transform:translateY(6px);}
-  to{opacity:1;transform:translateY(0);}
-}
-.vault-row:hover { background:var(--surface); border-color:var(--border2); }
-
-.vr-indicator {
-  width:4px; height:40px;
-  background:var(--border2);
-  border-radius:2px;
-}
-.vr-indicator.public { background:var(--gold); }
-.vr-indicator.encrypted { background:var(--amber); }
-
-.vr-id {
-  font-size:11px; color:var(--muted);
-  font-family:'DM Mono',monospace;
-}
-.vr-id span { color:var(--gold); }
-
-.vr-msg {
-  font-family:'Playfair Display',serif;
-  font-size:15px; font-style:italic;
-  color:var(--text);
-  white-space:nowrap; overflow:hidden;
-  text-overflow:ellipsis;
-}
-.vr-msg.enc {
-  font-family:'DM Mono',monospace;
-  font-size:11px; font-style:normal;
-  color:var(--muted);
-  display:flex; align-items:center; gap:8px;
-}
-
-.vr-cond { font-size:11px; color:var(--muted2); text-align:right; }
-.vr-cond strong { color:var(--text); display:block; }
-
-.status-pill {
-  font-size:9px; letter-spacing:0.15em;
-  text-transform:uppercase; padding:3px 8px;
-  border:1px solid; white-space:nowrap;
-}
-.status-pill.pending { color:var(--muted); border-color:var(--border2); }
-.status-pill.active  { color:var(--green); border-color:var(--green); }
-.status-pill.unlockable { color:var(--amber); border-color:var(--amber); animation:glow 2s ease-in-out infinite; }
-.status-pill.spent   { color:var(--muted); border-color:var(--border); }
-@keyframes glow {
-  0%,100%{box-shadow:0 0 0 transparent;}
-  50%{box-shadow:0 0 10px rgba(224,120,32,0.3);}
-}
-
-/* ═══ CREATE PAGE ═══ */
-.create-layout {
-  display:grid;
-  grid-template-columns:1fr 380px;
-  gap:32px;
-  align-items:start;
-}
-
-.form-panel {
-  background:var(--panel);
-  border:1px solid var(--border);
-  padding:32px;
-}
-
-.field {
-  margin-bottom:24px;
-}
-.field-label {
-  font-size:9px; letter-spacing:0.25em;
-  text-transform:uppercase; color:var(--muted);
-  display:block; margin-bottom:8px;
-}
-.field-input {
-  width:100%;
-  background:var(--bg);
-  border:1px solid var(--border);
-  color:var(--text);
-  font-family:'DM Mono',monospace;
-  font-size:13px;
-  padding:12px 14px;
-  outline:none;
-  transition:border-color 0.15s;
-}
-.field-input:focus { border-color:var(--border2); }
-.field-input::placeholder { color:var(--muted); }
-
-textarea.field-input {
-  min-height:100px; resize:vertical;
-  font-family:'Playfair Display',serif;
-  font-style:italic; font-size:15px;
-}
-
-select.field-input {
-  appearance:none; cursor:pointer;
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6878'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;
-  background-position:right 14px center;
-}
-
-.field-row {
-  display:grid; grid-template-columns:1fr 1fr; gap:16px;
-}
-
-/* Condition selector */
-.cond-tabs {
-  display:grid; grid-template-columns:repeat(3,1fr);
-  gap:1px; background:var(--border);
-  margin-bottom:16px;
-}
-.cond-tab {
-  background:var(--surface);
-  padding:12px;
-  text-align:center;
-  font-size:10px; letter-spacing:0.15em; text-transform:uppercase;
-  color:var(--muted); cursor:pointer;
-  transition:all 0.1s;
-}
-.cond-tab:hover { color:var(--muted2); background:var(--panel); }
-.cond-tab.active { background:var(--panel); color:var(--gold); border-bottom:2px solid var(--gold); }
-
-/* Encrypt toggle */
-.encrypt-row {
-  display:flex; align-items:center;
-  justify-content:space-between;
-  padding:14px 16px;
-  background:var(--bg);
-  border:1px solid var(--border);
-  cursor:pointer;
-  transition:border-color 0.15s;
-  margin-bottom:24px;
-}
-.encrypt-row:hover { border-color:var(--border2); }
-.encrypt-row.on { border-color:rgba(224,120,32,0.5); }
-
-.toggle-switch {
-  width:36px; height:20px;
-  background:var(--border2);
-  border-radius:10px;
-  position:relative;
-  transition:background 0.2s;
-  flex-shrink:0;
-}
-.toggle-switch::after {
-  content:'';
-  position:absolute;
-  width:14px; height:14px;
-  border-radius:50%; background:var(--muted2);
-  top:3px; left:3px;
-  transition:transform 0.2s, background 0.2s;
-}
-.encrypt-row.on .toggle-switch {
-  background:rgba(224,120,32,0.3);
-}
-.encrypt-row.on .toggle-switch::after {
-  transform:translateX(16px);
-  background:var(--amber);
-}
-
-/* Preview panel */
-.preview-panel {
-  background:var(--panel);
-  border:1px solid var(--border);
-  padding:28px;
-  position:sticky; top:100px;
-}
-.preview-title {
-  font-family:'Playfair Display',serif;
-  font-size:13px; color:var(--muted);
-  margin-bottom:20px; letter-spacing:0.05em;
-}
-.preview-vault {
-  background:var(--bg);
-  border:1px solid var(--border);
-  padding:20px;
-  margin-bottom:16px;
-}
-.pv-id { font-size:9px; color:var(--muted); margin-bottom:8px; letter-spacing:0.1em; }
-.pv-msg {
-  font-family:'Playfair Display',serif;
-  font-size:16px; font-style:italic;
-  color:var(--text); margin-bottom:12px;
-  min-height:24px;
-}
-.pv-cond { font-size:11px; color:var(--muted2); }
-.pv-hash { font-size:9px; color:var(--muted); margin-top:8px; letter-spacing:0.08em; word-break:break-all; }
-
-.btn-primary {
-  width:100%;
-  background:var(--gold);
-  color:var(--bg);
-  border:none;
-  font-family:'DM Mono',monospace;
-  font-size:11px; letter-spacing:0.2em; text-transform:uppercase;
-  padding:16px;
-  cursor:pointer;
-  transition:background 0.15s, transform 0.1s;
-}
-.btn-primary:hover { background:var(--gold2); }
-.btn-primary:active { transform:scale(0.99); }
-.btn-primary:disabled {
-  background:var(--border2);
-  color:var(--muted); cursor:not-allowed;
-}
-
-.btn-secondary {
-  background:transparent;
-  color:var(--muted2);
-  border:1px solid var(--border2);
-  font-family:'DM Mono',monospace;
-  font-size:11px; letter-spacing:0.15em; text-transform:uppercase;
-  padding:12px 20px;
-  cursor:pointer;
-  transition:all 0.15s;
-}
-.btn-secondary:hover { border-color:var(--text); color:var(--text); }
-
-/* ═══ ARCHIVE PAGE ═══ */
-.archive-filters {
-  display:flex; gap:8px; margin-bottom:24px; flex-wrap:wrap;
-}
-.filter-btn {
-  font-size:9px; letter-spacing:0.15em; text-transform:uppercase;
-  padding:6px 12px; border:1px solid var(--border2);
-  color:var(--muted); background:transparent;
-  cursor:pointer; transition:all 0.1s;
-}
-.filter-btn:hover { color:var(--muted2); border-color:var(--border2); }
-.filter-btn.active { color:var(--gold); border-color:var(--gold); }
-
-.archive-table {
-  width:100%;
-  border-collapse:collapse;
-}
-.archive-table th {
-  font-size:9px; letter-spacing:0.2em; text-transform:uppercase;
-  color:var(--muted); padding:10px 16px;
-  text-align:left; border-bottom:1px solid var(--border);
-  font-weight:400;
-}
-.archive-table td {
-  padding:14px 16px;
-  border-bottom:1px solid var(--border);
-  font-size:12px; color:var(--muted2);
-  vertical-align:middle;
-}
-.archive-table tr { cursor:pointer; transition:background 0.1s; }
-.archive-table tr:hover td { background:var(--panel); }
-.archive-table tr.mine td { border-left:2px solid var(--gold); }
-
-/* ═══ VAULT DETAIL MODAL ═══ */
-.modal-overlay {
-  position:fixed; inset:0;
-  background:rgba(0,0,0,0.8);
-  backdrop-filter:blur(6px);
-  z-index:500;
-  display:flex; align-items:center; justify-content:center;
-  opacity:0; pointer-events:none;
-  transition:opacity 0.2s;
-}
-.modal-overlay.open {
-  opacity:1; pointer-events:all;
-}
-.modal {
-  background:var(--panel);
-  border:1px solid var(--border2);
-  width:560px; max-width:95vw;
-  max-height:85vh; overflow-y:auto;
-  transform:translateY(16px);
-  transition:transform 0.2s;
-}
-.modal-overlay.open .modal { transform:translateY(0); }
-
-.modal-head {
-  padding:24px 28px 0;
-  border-bottom:1px solid var(--border);
-  padding-bottom:20px;
-  display:flex; justify-content:space-between; align-items:start;
-}
-.modal-title {
-  font-family:'Playfair Display',serif;
-  font-size:22px; color:var(--gold);
-}
-.modal-close {
-  background:none; border:none;
-  color:var(--muted); cursor:pointer;
-  font-size:18px; padding:4px;
-  transition:color 0.1s;
-}
-.modal-close:hover { color:var(--text); }
-
-.modal-body { padding:24px 28px; }
-
-.modal-row {
-  display:flex; justify-content:space-between; align-items:baseline;
-  padding:10px 0; border-bottom:1px solid var(--border);
-  gap:16px;
-}
-.modal-row:last-of-type { border-bottom:none; }
-.modal-key {
-  font-size:9px; letter-spacing:0.2em;
-  text-transform:uppercase; color:var(--muted);
-  flex-shrink:0;
-}
-.modal-val {
-  font-size:11px; color:var(--text);
-  text-align:right; word-break:break-all;
-  font-family:'DM Mono',monospace;
-}
-
-.msg-reveal {
-  background:var(--bg);
-  border:1px solid var(--border);
-  padding:20px;
-  margin-top:16px;
-}
-.msg-reveal-label {
-  font-size:9px; letter-spacing:0.2em; text-transform:uppercase;
-  color:var(--muted); margin-bottom:10px;
-}
-.msg-reveal-text {
-  font-family:'Playfair Display',serif;
-  font-size:18px; font-style:italic;
-  color:var(--text); line-height:1.5;
-}
-.msg-reveal-text.enc {
-  font-family:'DM Mono',monospace;
-  font-size:11px; font-style:normal;
-  color:var(--muted);
-}
-
-.key-box {
-  background:rgba(224,120,32,0.06);
-  border:1px solid rgba(224,120,32,0.3);
-  padding:16px; margin-top:16px;
-}
-.key-box-label {
-  font-size:9px; letter-spacing:0.2em; text-transform:uppercase;
-  color:var(--amber); margin-bottom:8px;
-}
-.key-box-val {
-  font-size:11px; color:var(--text);
-  word-break:break-all; line-height:1.6;
-}
-.copy-btn {
-  font-size:9px; letter-spacing:0.1em;
-  padding:4px 10px; border:1px solid var(--border2);
-  color:var(--muted); background:none; cursor:pointer;
-  transition:all 0.1s; margin-top:8px;
-}
-.copy-btn:hover { color:var(--text); border-color:var(--text); }
-
-.modal-actions {
-  padding:0 28px 24px;
-  display:flex; gap:12px;
-}
-
-/* ═══ NOTIFICATIONS ═══ */
-.notif-wrap {
-  position:fixed; bottom:24px; right:24px;
-  z-index:600; display:flex; flex-direction:column; gap:8px;
-  max-width:360px;
-}
-.notif {
-  background:var(--panel);
-  border:1px solid var(--border2);
-  padding:14px 18px;
-  display:flex; align-items:flex-start; gap:12px;
-  animation:notifIn 0.2s ease;
-  border-left:3px solid var(--muted);
-}
-@keyframes notifIn {
-  from{opacity:0;transform:translateX(20px);}
-  to{opacity:1;transform:translateX(0);}
-}
-.notif.success { border-left-color:var(--green); }
-.notif.error { border-left-color:var(--red); }
-.notif.warning { border-left-color:var(--amber); }
-.notif.info { border-left-color:var(--blue); }
-.notif-icon { font-size:14px; flex-shrink:0; margin-top:1px; }
-.notif-text { font-size:12px; color:var(--text); }
-.notif-sub { font-size:10px; color:var(--muted); margin-top:3px; }
-
-/* ═══ CONNECT PROMPT ═══ */
-.connect-prompt {
-  border:1px solid var(--border);
-  padding:48px; text-align:center;
-  margin-bottom:32px;
-}
-.cp-title {
-  font-family:'Playfair Display',serif;
-  font-size:24px; color:var(--muted);
-  margin-bottom:12px;
-}
-.cp-sub {
-  font-size:11px; color:var(--muted);
-  margin-bottom:28px; line-height:1.7;
-}
-.cp-btns { display:flex; gap:12px; justify-content:center; }
-
-/* ═══ TX STATUS ═══ */
-.tx-progress {
-  background:var(--bg);
-  border:1px solid var(--border);
-  padding:20px; margin-top:16px;
-}
-.tx-step {
-  display:flex; align-items:center; gap:12px;
-  padding:8px 0; font-size:11px; color:var(--muted);
-}
-.tx-step.done { color:var(--green); }
-.tx-step.active { color:var(--text); }
-.tx-step.error { color:var(--red); }
-.step-dot {
-  width:8px; height:8px; border-radius:50%;
-  background:var(--border2); flex-shrink:0;
-}
-.tx-step.done .step-dot { background:var(--green); }
-.tx-step.active .step-dot {
-  background:var(--blue);
-  animation:blink 1s ease-in-out infinite;
-}
-.tx-step.error .step-dot { background:var(--red); }
-
-.txid-link {
-  color:var(--blue); text-decoration:none; font-size:10px;
-  word-break:break-all;
-}
-.txid-link:hover { text-decoration:underline; }
-
-/* ═══ EMPTY STATE ═══ */
-.empty {
-  text-align:center; padding:60px 20px;
-  color:var(--muted); font-size:12px;
-}
-.empty-icon { font-size:32px; display:block; margin-bottom:12px; opacity:0.4; }
-
-/* ═══ HALVING COUNTDOWN ═══ */
-.halving-card {
-  background:var(--panel);
-  border:1px solid var(--border);
-  padding:24px;
-  margin-bottom:32px;
-  display:flex; gap:32px; align-items:center;
-}
-.halv-num {
-  font-family:'Playfair Display',serif;
-  font-size:48px; color:var(--gold);
-  line-height:1;
-}
-.halv-info { flex:1; }
-.halv-label {
-  font-size:9px; letter-spacing:0.25em; text-transform:uppercase;
-  color:var(--muted); margin-bottom:6px;
-}
-.halv-val { font-size:16px; color:var(--text); }
-.halv-sub { font-size:11px; color:var(--muted2); margin-top:4px; }
-
-/* ═══ RESPONSIVE ═══ */
-@media(max-width:768px){
-  header,nav { padding:0 16px; }
-  .page { padding:16px; }
-  .create-layout { grid-template-columns:1fr; }
-  .dash-grid { grid-template-columns:1fr 1fr; }
-  .vault-row { grid-template-columns:8px 1fr auto; }
-  .vr-id,.vr-cond { display:none; }
-}
+/* NOTIFICATIONS */
+.notifs{position:fixed;bottom:24px;right:24px;z-index:600;display:flex;flex-direction:column;gap:8px;max-width:340px;}
+.notif{background:var(--panel);border:1px solid var(--border2);border-left:3px solid var(--muted);padding:13px 16px;display:flex;align-items:flex-start;gap:10px;animation:notifIn .2s ease;}
+@keyframes notifIn{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
+.notif.success{border-left-color:var(--green);}
+.notif.error{border-left-color:var(--red);}
+.notif.warning{border-left-color:var(--amber);}
+.notif.info{border-left-color:var(--blue);}
+.notif-icon{font-size:13px;flex-shrink:0;margin-top:1px;}
+.notif-title{font-size:12px;color:var(--text);}
+.notif-sub{font-size:10px;color:var(--muted);margin-top:2px;}
+.empty{text-align:center;padding:60px 20px;color:var(--muted);}
+.empty-icon{font-size:28px;display:block;margin-bottom:10px;opacity:.3;}
 </style>
 </head>
 <body>
-<div class="app">
 
-<!-- ═══ HEADER ═══ -->
 <header>
-  <div class="logo">
+  <div>
     <span class="logo-name">SatAnchor</span>
     <span class="logo-tag">Bitcoin · Layer 1</span>
   </div>
@@ -747,269 +231,165 @@ select.field-input {
       <span>Block</span>
       <span id="liveBlock">—</span>
     </div>
-    <span class="net-badge testnet">Testnet</span>
-    <div style="position:relative;">
-      <button class="btn-wallet" id="walletBtn" onclick="toggleWalletMenu()">
-        <span class="wallet-icon">⬡</span>
+    <span class="net-badge">Testnet</span>
+    <div style="position:relative">
+      <button class="btn-wallet" id="walletBtn" onclick="toggleMenu()">
+        <span>⬡</span>
         <span id="walletLabel">Connect Wallet</span>
       </button>
       <div class="wallet-menu" id="walletMenu">
-        <div class="wallet-menu-item" id="unisatItem" onclick="connectWallet('unisat')">
-          <span>🟠</span> UniSat Wallet
-        </div>
-        <div class="wallet-menu-item" id="opnetItem" onclick="connectWallet('opnet')">
-          <span>🔵</span> OP_NET Wallet
-        </div>
-        <div class="wallet-menu-item" id="disconnectItem" style="display:none" onclick="disconnectWallet()">
-          <span>✕</span> Disconnect
-        </div>
-        <div class="wallet-menu-item" onclick="debugWallets()" style="font-size:10px;color:var(--muted)">
-          <span>🔍</span> Diagnose wallets
-        </div>
+        <div class="wallet-menu-item" onclick="connectWallet('unisat')">🟠 UniSat Wallet</div>
+        <div class="wallet-menu-item" onclick="connectWallet('opnet')">🔵 OP_WALLET</div>
+        <div class="wallet-menu-item" id="diagItem" onclick="diagnose()" style="font-size:10px;color:var(--muted)">🔍 Diagnose wallets</div>
+        <div class="wallet-menu-item danger" id="discItem" style="display:none" onclick="disconnect()">✕ Disconnect</div>
       </div>
     </div>
   </div>
 </header>
 
-<!-- ═══ NAV ═══ -->
 <nav>
-  <div class="nav-tab active" onclick="showPage('dashboard')">Dashboard</div>
-  <div class="nav-tab" onclick="showPage('create')">Create Vault</div>
-  <div class="nav-tab" onclick="showPage('archive')">Archive</div>
+  <div class="nav-tab active" data-page="dashboard" onclick="showPage(this)">Dashboard</div>
+  <div class="nav-tab" data-page="create" onclick="showPage(this)">Create Anchor</div>
+  <div class="nav-tab" data-page="archive" onclick="showPage(this)">Archive</div>
 </nav>
 
-<!-- ═══════════════════════════════
-     DASHBOARD PAGE
-═══════════════════════════════ -->
+<!-- DASHBOARD -->
 <div class="page active" id="page-dashboard">
-
-  <!-- Stats -->
-  <div class="dash-grid" id="dashStats">
-    <div class="dash-stat">
-      <span class="dash-stat-num" id="stat-total">0</span>
-      <span class="dash-stat-label">Total Vaults</span>
-    </div>
-    <div class="dash-stat">
-      <span class="dash-stat-num" id="stat-active">0</span>
-      <span class="dash-stat-label">Active</span>
-    </div>
-    <div class="dash-stat">
-      <span class="dash-stat-num" id="stat-unlockable">0</span>
-      <span class="dash-stat-label">Unlockable</span>
-    </div>
-    <div class="dash-stat">
-      <span class="dash-stat-num" id="stat-next">—</span>
-      <span class="dash-stat-label">Next Unlock</span>
-    </div>
+  <div class="stats-grid">
+    <div class="stat"><span class="stat-num" id="s-total">0</span><span class="stat-label">Total Anchors</span></div>
+    <div class="stat"><span class="stat-num" id="s-active">0</span><span class="stat-label">Active</span></div>
+    <div class="stat"><span class="stat-num" id="s-unlock">0</span><span class="stat-label">Unlockable</span></div>
+    <div class="stat"><span class="stat-num" id="s-next">—</span><span class="stat-label">Next Unlock</span></div>
   </div>
 
-  <!-- Halving info -->
-  <div class="halving-card" id="halvingCard">
-    <div class="halv-num" id="halvNum">5</div>
-    <div class="halv-info">
+  <div class="halving">
+    <div class="halv-n">5</div>
+    <div>
       <div class="halv-label">Next Bitcoin Halving</div>
-      <div class="halv-val" id="halvBlock">Block #1,050,000</div>
-      <div class="halv-sub" id="halvBlocks">~162,588 blocks away · approx. 2026</div>
+      <div class="halv-val">Block #1,050,000</div>
+      <div class="halv-sub" id="halvSub">~162,588 blocks away</div>
     </div>
   </div>
 
-  <!-- Timeline -->
-  <div class="timeline-wrap sec-head" style="display:block;">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:0;padding-bottom:16px;border-bottom:1px solid var(--border);">
-      <span class="sec-title">Unlock Timeline</span>
-    </div>
-    <div class="timeline-bar">
-      <div class="timeline-fill" id="timelineFill" style="width:0%"></div>
-    </div>
-    <div class="timeline-points" id="timelinePoints">
-      <div class="t-pt">
-        <div class="t-dot done"></div>
-        <span class="t-lbl">Genesis</span>
-        <span class="t-blk">#0</span>
-      </div>
-      <div class="t-pt">
-        <div class="t-dot done"></div>
-        <span class="t-lbl">Halving 4</span>
-        <span class="t-blk">#840,000</span>
-      </div>
-      <div class="t-pt">
-        <div class="t-dot now"></div>
-        <span class="t-lbl" style="color:var(--amber)">Now</span>
-        <span class="t-blk" style="color:var(--amber)" id="nowBlock">#—</span>
-      </div>
-      <div class="t-pt">
-        <div class="t-dot"></div>
-        <span class="t-lbl">Halving 5</span>
-        <span class="t-blk">#1,050,000</span>
-      </div>
-    </div>
+  <div class="sh" style="display:block;border-bottom:1px solid var(--border);margin-bottom:0;padding-bottom:16px;">
+    <span class="sh-title">Unlock Timeline</span>
+  </div>
+  <div class="timeline-bar">
+    <div class="timeline-fill" id="tlFill" style="width:0%"></div>
+  </div>
+  <div class="timeline-pts">
+    <div class="t-pt"><div class="t-dot done"></div><span class="t-lbl">Genesis</span><span class="t-blk">#0</span></div>
+    <div class="t-pt"><div class="t-dot done"></div><span class="t-lbl">Halving 4</span><span class="t-blk">#840,000</span></div>
+    <div class="t-pt"><div class="t-dot now"></div><span class="t-lbl" style="color:var(--amber)">Now</span><span class="t-blk" style="color:var(--amber)" id="nowBlk">#—</span></div>
+    <div class="t-pt"><div class="t-dot"></div><span class="t-lbl">Halving 5</span><span class="t-blk">#1,050,000</span></div>
   </div>
 
-  <!-- My vaults -->
-  <div class="sec-head">
-    <span class="sec-title">My Vaults</span>
-    <span class="sec-badge" id="myVaultCount">0</span>
+  <div class="sh" style="margin-top:40px;">
+    <span class="sh-title">My Anchors</span>
+    <span class="sh-badge" id="myCount">0</span>
   </div>
-  <div id="myVaultsList">
-    <div class="connect-prompt">
-      <div class="cp-title">Connect your wallet to begin</div>
-      <div class="cp-sub">Connect UniSat or OP_NET wallet to create<br>and manage your time-locked vaults.</div>
-      <div class="cp-btns">
-        <button class="btn-secondary" onclick="connectWallet('unisat')">🟠 UniSat</button>
-        <button class="btn-secondary" onclick="connectWallet('opnet')">🔵 OP_NET</button>
-      </div>
-    </div>
-  </div>
-
+  <div id="myList"></div>
 </div>
 
-<!-- ═══════════════════════════════
-     CREATE PAGE
-═══════════════════════════════ -->
+<!-- CREATE -->
 <div class="page" id="page-create">
-
   <div class="create-layout">
-    <!-- Form -->
     <div>
-      <div class="sec-head">
-        <span class="sec-title">Create New Anchor</span>
-      </div>
-
+      <div class="sh"><span class="sh-title">Create New Anchor</span></div>
       <div class="form-panel">
-
-        <!-- Message -->
         <div class="field">
           <label class="field-label">Message</label>
           <textarea class="field-input" id="f-msg" placeholder="Write your message for the future..." oninput="updatePreview()"></textarea>
         </div>
-
-        <!-- Condition type -->
         <div class="field">
           <label class="field-label">Unlock Condition</label>
           <div class="cond-tabs">
-            <div class="cond-tab active" onclick="setCondTab('block')">Block Height</div>
-            <div class="cond-tab" onclick="setCondTab('date')">Date</div>
-            <div class="cond-tab" onclick="setCondTab('halving')">Halving</div>
+            <div class="cond-tab active" onclick="setTab('block',this)">Block Height</div>
+            <div class="cond-tab" onclick="setTab('date',this)">Date</div>
+            <div class="cond-tab" onclick="setTab('halving',this)">Halving</div>
           </div>
-          <div id="cond-block">
-            <input type="number" class="field-input" id="f-block" placeholder="e.g. 900000" min="1" oninput="updatePreview()">
-            <div style="font-size:10px;color:var(--muted);margin-top:6px;">Current block: <span id="condCurrentBlock">loading...</span></div>
+          <div id="tab-block">
+            <input type="number" class="field-input" id="f-block" placeholder="e.g. 900000" oninput="updatePreview()">
+            <div style="font-size:10px;color:var(--muted);margin-top:5px">Current: <span id="curBlk">loading...</span></div>
           </div>
-          <div id="cond-date" style="display:none;">
+          <div id="tab-date" style="display:none">
             <input type="date" class="field-input" id="f-date" oninput="updatePreview()">
           </div>
-          <div id="cond-halving" style="display:none;">
+          <div id="tab-halving" style="display:none">
             <select class="field-input" id="f-halving" onchange="updatePreview()">
               <option value="5">Halving #5 — Block #1,050,000</option>
               <option value="6">Halving #6 — Block #1,260,000</option>
               <option value="7">Halving #7 — Block #1,470,000</option>
-              <option value="8">Halving #8 — Block #1,680,000</option>
             </select>
           </div>
         </div>
-
-        <!-- Amount -->
         <div class="field">
           <label class="field-label">Amount (satoshis)</label>
-          <input type="number" class="field-input" id="f-amount" placeholder="e.g. 10000 (= 0.0001 BTC)" min="546" oninput="updatePreview()">
-          <div style="font-size:10px;color:var(--muted);margin-top:6px;">Minimum: 546 sats (dust limit)</div>
+          <input type="number" class="field-input" id="f-amount" placeholder="e.g. 10000" min="1000" oninput="updatePreview()">
+          <div style="font-size:10px;color:var(--muted);margin-top:5px">Minimum: 1000 sats</div>
         </div>
-
-        <!-- Encrypt toggle -->
-        <div class="encrypt-row" id="encryptRow" onclick="toggleEncrypt()">
+        <div class="encrypt-row" id="encRow" onclick="toggleEncrypt()">
           <div>
-            <div style="font-size:11px;color:var(--text);margin-bottom:3px;">Encrypt Message</div>
-            <div style="font-size:10px;color:var(--muted);">AES-256-GCM · Key shown once · Never stored</div>
+            <div style="font-size:11px;color:var(--text);margin-bottom:2px">Encrypt Message</div>
+            <div style="font-size:10px;color:var(--muted)">AES-256-GCM · Key shown once · Never stored</div>
           </div>
-          <div class="toggle-switch" id="encryptSwitch"></div>
+          <div class="toggle" id="encToggle"></div>
         </div>
-
-        <!-- Submit -->
-        <button class="btn-primary" id="createBtn" onclick="createVault()">
-          Create Anchor →
-        </button>
-        <div id="createStatus" style="margin-top:16px;"></div>
-
+        <button class="btn-primary" id="createBtn" onclick="createAnchor()">Create Anchor →</button>
+        <div id="createStatus"></div>
       </div>
     </div>
-
-    <!-- Preview -->
     <div>
-      <div class="sec-head">
-        <span class="sec-title">Preview</span>
-      </div>
+      <div class="sh"><span class="sh-title">Preview</span></div>
       <div class="preview-panel">
-        <div class="preview-title">Your anchor will look like this</div>
-        <div class="preview-vault">
-          <div class="pv-id">ID: <span style="color:var(--gold)" id="prev-id">— — — — — — — —</span></div>
-          <div class="pv-msg" id="prev-msg" style="color:var(--muted);font-style:italic;">Your message here...</div>
-          <div class="pv-cond" id="prev-cond" style="color:var(--muted)">Set condition above</div>
-          <div class="pv-hash" id="prev-hash"></div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:16px;font-style:italic">Your anchor will look like this</div>
+        <div class="prev-vault">
+          <div class="prev-id">ID: <span style="color:var(--gold)" id="prev-id">— — — — — — — —</span></div>
+          <div class="prev-msg" id="prev-msg" style="color:var(--muted)">Your message here...</div>
+          <div class="prev-cond" id="prev-cond" style="color:var(--muted)">Set condition above</div>
+          <div class="prev-hash" id="prev-hash"></div>
         </div>
-
-        <!-- Wallet status -->
-        <div style="margin-bottom:16px;">
-          <div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Wallet</div>
-          <div id="walletStatus" style="font-size:11px;color:var(--muted);">Not connected</div>
+        <div style="margin-bottom:14px">
+          <div style="font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Wallet</div>
+          <div id="walletStatus" style="font-size:11px;color:var(--muted)">Not connected</div>
         </div>
-
-        <!-- Protocol info -->
-        <div style="background:var(--bg);border:1px solid var(--border);padding:14px;font-size:10px;color:var(--muted);line-height:1.8;">
-          <div>Protocol: <span style="color:var(--muted2)">SATANCHOR_V1</span></div>
-          <div>Script: <span style="color:var(--muted2)">P2WSH + CLTV</span></div>
+        <div class="proto-box">
+          <div>Protocol: <span>SATANCHOR_V1</span></div>
+          <div>Script: <span>P2WSH + CLTV</span></div>
           <div>Network: <span style="color:var(--amber)">Bitcoin Testnet</span></div>
-          <div>Commitment: <span style="color:var(--muted2)">OP_RETURN</span></div>
+          <div>Commitment: <span>OP_RETURN</span></div>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════
-     ARCHIVE PAGE
-═══════════════════════════════ -->
+<!-- ARCHIVE -->
 <div class="page" id="page-archive">
-
-  <div class="sec-head">
-    <span class="sec-title">Anchor Archive</span>
-    <span class="sec-badge" id="archiveCount">0</span>
+  <div class="sh">
+    <span class="sh-title">Anchor Archive</span>
+    <span class="sh-badge" id="archCount">0</span>
   </div>
-
-  <div class="archive-filters">
-    <button class="filter-btn active" onclick="filterArchive('all',this)">All</button>
-    <button class="filter-btn" onclick="filterArchive('mine',this)">Mine</button>
-    <button class="filter-btn" onclick="filterArchive('pending',this)">Pending</button>
-    <button class="filter-btn" onclick="filterArchive('active',this)">Active</button>
-    <button class="filter-btn" onclick="filterArchive('unlockable',this)">Unlockable</button>
-    <button class="filter-btn" onclick="filterArchive('spent',this)">Spent</button>
+  <div class="filter-bar">
+    <button class="fbtn active" onclick="setFilter('all',this)">All</button>
+    <button class="fbtn" onclick="setFilter('mine',this)">Mine</button>
+    <button class="fbtn" onclick="setFilter('active',this)">Active</button>
+    <button class="fbtn" onclick="setFilter('unlockable',this)">Unlockable</button>
+    <button class="fbtn" onclick="setFilter('spent',this)">Spent</button>
   </div>
-
   <table class="archive-table">
-    <thead>
-      <tr>
-        <th>Anchor ID</th>
-        <th>Message</th>
-        <th>Condition</th>
-        <th>Status</th>
-        <th>Type</th>
-        <th>Network</th>
-        <th>Created</th>
-      </tr>
-    </thead>
-    <tbody id="archiveBody">
-      <tr><td colspan="7"><div class="empty"><span class="empty-icon">⬡</span>No vaults yet</div></td></tr>
-    </tbody>
+    <thead><tr>
+      <th>Anchor ID</th><th>Message</th><th>Condition</th><th>Status</th><th>Type</th><th>Created</th>
+    </tr></thead>
+    <tbody id="archBody"></tbody>
   </table>
-
 </div>
 
-</div><!-- .app -->
-
-<!-- ═══ VAULT DETAIL MODAL ═══ -->
-<div class="modal-overlay" id="vaultModal" onclick="closeModalOuter(event)">
+<!-- MODAL -->
+<div class="overlay" id="modal" onclick="closeModalOuter(event)">
   <div class="modal">
     <div class="modal-head">
-      <div class="modal-title" id="mTitle">Vault</div>
+      <div class="modal-title" id="mTitle">Anchor</div>
       <button class="modal-close" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body" id="mBody"></div>
@@ -1017,1215 +397,730 @@ select.field-input {
   </div>
 </div>
 
-<!-- ═══ NOTIFICATIONS ═══ -->
-<div class="notif-wrap" id="notifWrap"></div>
+<div class="notifs" id="notifs"></div>
 
-<!-- ═══════════════════════════════
-     JAVASCRIPT
-═══════════════════════════════ -->
 <script>
 'use strict';
 
-/* ═══════════════════════════════════════════════════
-   STATE
-═══════════════════════════════════════════════════ */
-const STATE = {
-  wallet: null,      // { type: 'unisat'|'opnet', address, pubkey }
-  vaults: [],        // loaded from localStorage
-  currentBlock: 0,
+/* ─── STATE ─── */
+const S = {
+  wallet: null,   // { type, address, pubkey, provider }
+  anchors: [],
+  block: 0,
   condTab: 'block',
-  encryptOn: false,
-  archiveFilter: 'all',
+  encrypt: false,
+  archFilter: 'all',
 };
 
-const NETWORK = 'testnet';
-const MEMPOOL_API = 'https://mempool.space/testnet/api';
-const HALVING_BLOCKS = { 4:840000, 5:1050000, 6:1260000, 7:1470000, 8:1680000 };
-const PROTOCOL_MAGIC = 'SATANCHOR_V1';
+const HALVING = { 5:1050000, 6:1260000, 7:1470000 };
+const MEMPOOL = 'https://mempool.space/testnet/api';
 
-/* ═══════════════════════════════════════════════════
-   STORAGE
-═══════════════════════════════════════════════════ */
-function loadVaults() {
-  try {
-    const raw = localStorage.getItem('satanchor_vaults');
-    STATE.vaults = raw ? JSON.parse(raw) : [];
-  } catch(e) { STATE.vaults = []; }
+/* ─── STORAGE ─── */
+function load()  { try { S.anchors = JSON.parse(localStorage.getItem('satanchor_v1') || '[]'); } catch(_) { S.anchors = []; } }
+function save()  { localStorage.setItem('satanchor_v1', JSON.stringify(S.anchors)); }
+function addA(a) { S.anchors.unshift(a); save(); refresh(); }
+
+/* ─── CRYPTO UTILS ─── */
+const HEX = '0123456789abcdef';
+function hex(bytes) { return Array.from(bytes).map(b => HEX[b>>4]+HEX[b&15]).join(''); }
+function unhex(h)   { return new Uint8Array(h.match(/.{2}/g).map(b => parseInt(b,16))); }
+function rand(n)    { return crypto.getRandomValues(new Uint8Array(n)); }
+async function sha256hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return hex(new Uint8Array(buf));
+}
+async function sha256bytes(bytes) {
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
 }
 
-function saveVaults() {
-  localStorage.setItem('satanchor_vaults', JSON.stringify(STATE.vaults));
-}
-
-function addVault(vault) {
-  STATE.vaults.unshift(vault);
-  saveVaults();
-  refreshAll();
-}
-
-function updateVault(id, patch) {
-  const idx = STATE.vaults.findIndex(v => v.id === id);
-  if (idx >= 0) {
-    STATE.vaults[idx] = { ...STATE.vaults[idx], ...patch };
-    saveVaults();
-    refreshAll();
-  }
-}
-
-/* ═══════════════════════════════════════════════════
-   BITCOIN UTILS
-═══════════════════════════════════════════════════ */
-function hexToBytes(hex) {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i=0; i<hex.length; i+=2)
-    bytes[i/2] = parseInt(hex.substr(i,2), 16);
-  return bytes;
-}
-
-function bytesToHex(bytes) {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-
-async function sha256(text) {
-  const buf = new TextEncoder().encode(text);
-  const hash = await crypto.subtle.digest('SHA-256', buf);
-  return bytesToHex(new Uint8Array(hash));
-}
-
-async function sha256Bytes(bytes) {
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return new Uint8Array(hash);
-}
-
-function encodeVarInt(n) {
-  if (n < 0xfd) return new Uint8Array([n]);
-  if (n <= 0xffff) {
-    const b = new Uint8Array(3); b[0]=0xfd;
-    new DataView(b.buffer).setUint16(1, n, true); return b;
-  }
-  const b = new Uint8Array(5); b[0]=0xfe;
-  new DataView(b.buffer).setUint32(1, n, true); return b;
-}
-
-function encodeCLTV(value) {
-  // Bitcoin minimal int encoding
-  if (value === 0) return new Uint8Array([0x00]);
-  const neg = value < 0;
-  let v = Math.abs(value);
-  const bytes = [];
-  while (v > 0) { bytes.push(v & 0xff); v >>= 8; }
-  if (bytes[bytes.length-1] & 0x80) bytes.push(neg ? 0x80 : 0x00);
-  else if (neg) bytes[bytes.length-1] |= 0x80;
-  const result = new Uint8Array(1 + bytes.length);
-  result[0] = bytes.length; // push length
-  result.set(bytes, 1);
-  return result;
-}
-
-function buildCLTVRedeemScript(pubkeyHex, cltvValue) {
-  // <cltvValue> OP_CLTV OP_DROP <pubkey> OP_CHECKSIG
-  const cltvEnc = encodeCLTV(cltvValue);
-  const pubkeyBytes = hexToBytes(pubkeyHex);
-  const script = new Uint8Array([
-    ...cltvEnc,
-    0xb1, // OP_CLTV
-    0x75, // OP_DROP
-    pubkeyBytes.length,
-    ...pubkeyBytes,
-    0xac, // OP_CHECKSIG
-  ]);
-  return script;
-}
-
-async function buildP2WSHAddress(redeemScript) {
-  // P2WSH: OP_0 <SHA256(redeemScript)>
-  const scriptHash = await sha256Bytes(redeemScript);
-
-  // Bech32 encode for testnet (hrp = 'tb')
-  const hrp = NETWORK === 'testnet' ? 'tb' : 'bc';
-  return bech32Encode(hrp, 0, scriptHash);
-}
-
-async function buildOPReturnScript(vaultId, msgHash) {
-  const magic = new TextEncoder().encode(PROTOCOL_MAGIC);
-  const idBytes = hexToBytes(vaultId);
-  const hashBytes = hexToBytes(msgHash).slice(0, 20);
-  const payload = new Uint8Array([
-    ...magic, 0x00, ...idBytes, 0x00, ...hashBytes
-  ]);
-  // OP_RETURN + push
-  return new Uint8Array([0x6a, payload.length, ...payload]);
-}
-
-/* ═══════════════════════════════════════════════════
-   BECH32 ENCODING
-═══════════════════════════════════════════════════ */
-const BECH32_CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
-const BECH32_GEN = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3];
-
-function bech32Polymod(values) {
-  let chk = 1;
-  for (const v of values) {
-    const b = chk >> 25;
-    chk = (chk & 0x1ffffff) << 5 ^ v;
-    for (let i=0; i<5; i++) if ((b>>i)&1) chk ^= BECH32_GEN[i];
-  }
-  return chk;
-}
-
-function bech32HrpExpand(hrp) {
-  return [...hrp.split('').map(c=>c.charCodeAt(0)>>5), 0,
-          ...hrp.split('').map(c=>c.charCodeAt(0)&31)];
-}
-
-function convertBits(data, from, to, pad=true) {
-  let acc=0, bits=0; const ret=[], maxv=(1<<to)-1;
-  for (const v of data) {
-    acc = (acc<<from|v) & ((1<<(from+to-1))-1);
-    bits += from;
-    while (bits>=to) { bits-=to; ret.push((acc>>bits)&maxv); }
-  }
-  if (pad && bits) ret.push((acc<<(to-bits))&maxv);
-  return ret;
-}
-
-function bech32Encode(hrp, witVer, witProg) {
-  const data = [witVer, ...convertBits(witProg, 8, 5)];
-  const expanded = bech32HrpExpand(hrp);
-  const polymod = bech32Polymod([...expanded, ...data, 0,0,0,0,0,0]) ^ 1;
-  const checksum = Array.from({length:6}, (_,i)=>(polymod>>(5*(5-i)))&31);
-  return hrp + '1' + [...data,...checksum].map(d=>BECH32_CHARSET[d]).join('');
-}
-
-/* ═══════════════════════════════════════════════════
-   ENCRYPTION
-═══════════════════════════════════════════════════ */
-async function encryptMessage(text) {
-  const key = await crypto.subtle.generateKey(
-    { name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']
-  );
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encoded = new TextEncoder().encode(text);
-  const cipher = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, encoded);
-  const rawKey = await crypto.subtle.exportKey('raw', key);
-  const blob = new Uint8Array([...iv, ...new Uint8Array(cipher)]);
+/* ─── ENCRYPTION ─── */
+async function encrypt(text) {
+  const key = await crypto.subtle.generateKey({name:'AES-GCM',length:256},true,['encrypt','decrypt']);
+  const iv  = rand(12);
+  const ct  = await crypto.subtle.encrypt({name:'AES-GCM',iv}, key, new TextEncoder().encode(text));
+  const raw = await crypto.subtle.exportKey('raw', key);
+  const blob = new Uint8Array([...iv, ...new Uint8Array(ct)]);
   return {
     blob: btoa(String.fromCharCode(...blob)),
-    key: btoa(String.fromCharCode(...new Uint8Array(rawKey))),
+    key:  btoa(String.fromCharCode(...new Uint8Array(raw))),
   };
 }
-
-async function decryptMessage(blobB64, keyB64) {
+async function decrypt(blobB64, keyB64) {
   const blob = new Uint8Array(atob(blobB64).split('').map(c=>c.charCodeAt(0)));
-  const rawKey = new Uint8Array(atob(keyB64).split('').map(c=>c.charCodeAt(0)));
-  const iv = blob.slice(0, 12);
-  const cipher = blob.slice(12);
-  const key = await crypto.subtle.importKey('raw', rawKey, 'AES-GCM', false, ['decrypt']);
-  const plain = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, cipher);
+  const raw  = new Uint8Array(atob(keyB64).split('').map(c=>c.charCodeAt(0)));
+  const key  = await crypto.subtle.importKey('raw',raw,'AES-GCM',false,['decrypt']);
+  const plain = await crypto.subtle.decrypt({name:'AES-GCM',iv:blob.slice(0,12)}, key, blob.slice(12));
   return new TextDecoder().decode(plain);
 }
 
-/* ═══════════════════════════════════════════════════
-   WALLET
-═══════════════════════════════════════════════════ */
-function toggleWalletMenu() {
-  document.getElementById('walletMenu').classList.toggle('open');
+/* ─── BITCOIN / BECH32 ─── */
+const CHARSET = 'qpzry9x8gf2tvdw0s3jn54khce6mua7l';
+const GEN = [0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3];
+
+function b32Polymod(v) {
+  let c=1;
+  for (const x of v) { const b=c>>25; c=(c&0x1ffffff)<<5^x; for(let i=0;i<5;i++) if((b>>i)&1) c^=GEN[i]; }
+  return c;
+}
+function b32Expand(hrp) {
+  return [...hrp.split('').map(c=>c.charCodeAt(0)>>5),0,...hrp.split('').map(c=>c.charCodeAt(0)&31)];
+}
+function convertBits(data,from,to,pad=true) {
+  let acc=0,bits=0; const ret=[],maxv=(1<<to)-1;
+  for(const v of data){ acc=(acc<<from|v)&((1<<(from+to-1))-1); bits+=from; while(bits>=to){bits-=to;ret.push((acc>>bits)&maxv);} }
+  if(pad&&bits) ret.push((acc<<(to-bits))&maxv);
+  return ret;
+}
+function b32Encode(hrp,witVer,prog) {
+  const data=[witVer,...convertBits(prog,8,5)];
+  const exp=b32Expand(hrp);
+  const poly=b32Polymod([...exp,...data,0,0,0,0,0,0])^1;
+  const cs=Array.from({length:6},(_,i)=>(poly>>(5*(5-i)))&31);
+  return hrp+'1'+[...data,...cs].map(d=>CHARSET[d]).join('');
+}
+function b32Decode(addr) {
+  const lower=addr.toLowerCase();
+  const sep=lower.lastIndexOf('1');
+  const dataStr=lower.slice(sep+1,-6);
+  const data=dataStr.split('').map(c=>CHARSET.indexOf(c));
+  return new Uint8Array(convertBits(data.slice(1),5,8,false));
 }
 
-document.addEventListener('click', e => {
-  const btn = document.getElementById('walletBtn');
-  if (!btn.contains(e.target)) {
-    document.getElementById('walletMenu').classList.remove('open');
+async function p2wshAddress(redeemScript) {
+  const hash = await sha256bytes(redeemScript);
+  return b32Encode('tb', 0, hash);  // witness v0
+}
+
+function varInt(n) {
+  if (n<0xfd) return new Uint8Array([n]);
+  const b=new Uint8Array(3); b[0]=0xfd; new DataView(b.buffer).setUint16(1,n,true); return b;
+}
+function uint32LE(n) { const b=new Uint8Array(4); new DataView(b.buffer).setUint32(0,n,true); return b; }
+function uint64LE(n) { const b=new Uint8Array(8); let v=BigInt(n); for(let i=0;i<8;i++){b[i]=Number(v&0xffn);v>>=8n;} return b; }
+function cat(...arrs) { const t=arrs.reduce((s,a)=>s+a.length,0),r=new Uint8Array(t); let o=0; for(const a of arrs){r.set(a,o);o+=a.length;} return r; }
+
+/* Decode any bech32 address to scriptPubKey bytes */
+function addrToScript(addr) {
+  const lower = addr.toLowerCase();
+  const sep   = lower.lastIndexOf('1');
+  const dataStr = lower.slice(sep+1,-6);
+  const data = dataStr.split('').map(c=>CHARSET.indexOf(c));
+  const witVer = data[0];                  // 0=OP_0, 1=OP_1(taproot)
+  const prog   = new Uint8Array(convertBits(data.slice(1),5,8,false));
+  const opcode = witVer===0 ? 0x00 : (0x50+witVer);
+  return new Uint8Array([opcode, prog.length, ...prog]);
+}
+
+/* ─── PSBT BUILDER (pure JS, BIP-174) ─── */
+function kv(key, val) {
+  return cat(varInt(key.length), key, varInt(val.length), val);
+}
+
+async function buildPSBT(utxos, toAddr, toSats, changeSats, changeAddr) {
+  // Build unsigned tx
+  const ver  = new Uint8Array([0x02,0,0,0]);
+  const lock = new Uint8Array([0,0,0,0]);
+  const seq  = new Uint8Array([0xfd,0xff,0xff,0xff]);
+
+  const ins  = utxos.map(u => cat(
+    unhex(u.transactionId).reverse(),
+    uint32LE(u.outputIndex),
+    new Uint8Array([0x00]),   // empty scriptSig
+    seq
+  ));
+
+  const outs = [];
+  const toScript  = addrToScript(toAddr);
+  outs.push(cat(uint64LE(toSats), varInt(toScript.length), toScript));
+  if (changeSats >= 546) {
+    const chScript = addrToScript(changeAddr);
+    outs.push(cat(uint64LE(changeSats), varInt(chScript.length), chScript));
   }
+
+  const unsignedTx = cat(
+    ver,
+    varInt(ins.length), ...ins,
+    varInt(outs.length), ...outs,
+    lock
+  );
+
+  // x-only pubkey (Taproot) — 32 bytes, drop 02/03 prefix
+  const pub = S.wallet.pubkey || '';
+  const xOnly = pub.length >= 64
+    ? unhex(pub.length===66 ? pub.slice(2) : pub.slice(0,64))
+    : null;
+
+  // PSBT assembly
+  const MAGIC = new Uint8Array([0x70,0x73,0x62,0x74,0xff]); // "psbt\xff"
+  const parts  = [MAGIC];
+
+  // Global: unsigned tx (key type 0x00)
+  parts.push(kv(new Uint8Array([0x00]), unsignedTx));
+  parts.push(new Uint8Array([0x00])); // end globals
+
+  // Per-input
+  for (const u of utxos) {
+    const spk    = unhex(u.scriptPubKey.hex);
+    const value  = parseInt(u.value);
+
+    // PSBT_IN_WITNESS_UTXO (0x01)
+    const witnessUtxo = cat(uint64LE(value), varInt(spk.length), spk);
+    parts.push(kv(new Uint8Array([0x01]), witnessUtxo));
+
+    // PSBT_IN_TAP_INTERNAL_KEY (0x15) — x-only pubkey, tells wallet which key to use
+    if (xOnly && xOnly.length===32) {
+      parts.push(kv(new Uint8Array([0x15]), xOnly));
+    }
+
+    parts.push(new Uint8Array([0x00])); // end input
+  }
+
+  // Per-output (empty)
+  for (let i=0; i<outs.length; i++) parts.push(new Uint8Array([0x00]));
+
+  return hex(cat(...parts));
+}
+
+/* ─── MEMPOOL API ─── */
+async function fetchBlock() {
+  try {
+    const h = await (await fetch(`${MEMPOOL}/blocks/tip/height`)).json();
+    S.block = h;
+    document.getElementById('liveBlock').textContent = h.toLocaleString();
+    document.getElementById('nowBlk').textContent    = '#'+h.toLocaleString();
+    document.getElementById('curBlk').textContent    = '#'+h.toLocaleString();
+    document.getElementById('tlFill').style.width    = Math.min(100,(h/1050000)*100)+'%';
+    const left = 1050000-h;
+    document.getElementById('halvSub').textContent   = `~${left.toLocaleString()} blocks away · approx. ${Math.floor(Date.now()/1000+left*600) ? new Date((Date.now()+left*600000)).getFullYear() : ''}`;
+    refreshStats();
+  } catch(_) { document.getElementById('liveBlock').textContent='offline'; }
+}
+
+/* ─── WALLET ─── */
+function toggleMenu() {
+  document.getElementById('walletMenu').classList.toggle('open');
+}
+document.addEventListener('click', e => {
+  if (!document.getElementById('walletBtn').contains(e.target))
+    document.getElementById('walletMenu').classList.remove('open');
 });
 
 async function connectWallet(type) {
   document.getElementById('walletMenu').classList.remove('open');
+  await new Promise(r=>setTimeout(r,100));
 
-  if (type === 'unisat') {
-    if (typeof window.unisat === 'undefined') {
-      notify('UniSat not found', 'Install the UniSat Wallet browser extension first.', 'error');
-      window.open('https://unisat.io/download', '_blank');
-      return;
+  if (type==='unisat') {
+    if (!window.unisat) {
+      notify('UniSat not found','Install the UniSat extension first','error');
+      window.open('https://unisat.io/download','_blank'); return;
     }
     try {
-      notify('Connecting...', 'Waiting for UniSat approval', 'info');
+      notify('Connecting...','Waiting for UniSat','info');
       const accounts = await window.unisat.requestAccounts();
-      const pubkey = await window.unisat.getPublicKey();
-      const network = await window.unisat.getNetwork();
-
-      // Switch to testnet if needed
-      if (!network.includes('test')) {
-        try { await window.unisat.switchNetwork('testnet'); } catch(e) {}
-      }
-
-      STATE.wallet = { type:'unisat', address:accounts[0], pubkey };
-      onWalletConnected();
-      notify('UniSat Connected', truncate(accounts[0]), 'success');
+      const pubkey   = await window.unisat.getPublicKey();
+      try { const n=await window.unisat.getNetwork(); if(!n.includes('test')) await window.unisat.switchNetwork('testnet'); } catch(_){}
+      S.wallet = { type:'unisat', address:accounts[0], pubkey, provider:window.unisat };
+      onConnected();
+      notify('UniSat Connected ✓', trunc(accounts[0]), 'success');
     } catch(e) {
-      notify('Connection failed', e.message || 'User rejected', 'error');
+      notify('Connection failed', e.message||'User rejected', 'error');
     }
   }
 
-  else if (type === 'opnet') {
-    // OP_WALLET is a UniSat fork — injects as window.opnet
-    // Give the extension an extra tick to finish injecting
-    await new Promise(r => setTimeout(r, 150));
-
-    const provider = window.opnet || window.opwallet || null;
-
-    if (!provider) {
-      notify('OP_WALLET not found', 'Install OP_WALLET extension and reload the page.', 'error');
-      window.open('https://chromewebstore.google.com/detail/opwallet/pmbjpcmaaladnfpacpmhmnfmpklgbdjb', '_blank');
-      return;
+  else if (type==='opnet') {
+    const p = window.opnet || window.opwallet;
+    if (!p) {
+      notify('OP_WALLET not found','Install OP_WALLET extension and reload','error');
+      window.open('https://chromewebstore.google.com/detail/opwallet/pmbjpcmaaladnfpacpmhmnfmpklgbdjb','_blank'); return;
     }
-
     try {
-      notify('Connecting...', 'Approve in OP_WALLET popup', 'info');
-
-      // OP_WALLET uses same API as UniSat (it is a fork of UniSat)
-      const accounts = await provider.requestAccounts();
-      if (!accounts || accounts.length === 0) throw new Error('No accounts returned');
-
-      let pubkey = '';
-      try { pubkey = await provider.getPublicKey(); } catch(_) {}
-
-      // Switch to testnet if needed — bcrt1 = regtest, must be tb1 = testnet
-      // OP_WALLET network names: "regtest", "OPNet Testnet", "livenet"
-      // We need "OPNet Testnet" — addresses start with tb1...
-      let net = '';
-      try { net = String(await provider.getNetwork()).toLowerCase(); } catch(_) {}
-      console.log('OP_WALLET detected network:', net);
-
-      const isCorrectNet = net.includes('testnet') || net.includes('opnet testnet');
-      if (!isCorrectNet) {
-        // Try to switch — OP_WALLET uses "testnet" or "opnet testnet" as network name
-        let switched = false;
-        for (const netName of ['testnet', 'OPNet Testnet', 'opnet_testnet']) {
-          try {
-            await provider.switchNetwork(netName);
-            switched = true;
-            notify('Network switched', 'OP_WALLET → OPNet Testnet', 'info');
-            break;
-          } catch(_) {}
-        }
-        if (!switched) {
-          notify(
-            'Switch network manually',
-            'In OP_WALLET: click Bitcoin logo (top right) → select "OPNet Testnet" → reconnect.',
-            'warning'
-          );
-        }
-        // Re-fetch address after network switch
-        try {
-          const newAccounts = await provider.requestAccounts();
-          if (newAccounts?.[0]) accounts[0] = newAccounts[0];
-          try { pubkey = await provider.getPublicKey(); } catch(_) {}
-        } catch(_) {}
-      }
-
-      STATE.wallet = { type:'opnet', address:accounts[0], pubkey, _provider: provider };
-      onWalletConnected();
-      notify('OP_WALLET Connected ✓', truncate(accounts[0]), 'success');
+      notify('Connecting...','Waiting for OP_WALLET','info');
+      const accounts = await p.requestAccounts();
+      if (!accounts||!accounts[0]) throw new Error('No accounts returned');
+      let pubkey='';
+      try { pubkey = await p.getPublicKey(); } catch(_){}
+      S.wallet = { type:'opnet', address:accounts[0], pubkey, provider:p };
+      onConnected();
+      notify('OP_WALLET Connected ✓', trunc(accounts[0]), 'success');
     } catch(e) {
-      if (e.code === 4001 || e.message?.includes('reject') || e.message?.includes('cancel')) {
-        notify('Cancelled', 'Connection request was rejected', 'warning');
-      } else {
-        notify('Connection failed', e.message || 'Unknown error', 'error');
-      }
+      if (e.code===4001||/reject|cancel/i.test(e.message||'')) notify('Cancelled','Connection rejected','warning');
+      else notify('Connection failed', e.message||'Unknown error', 'error');
     }
   }
 }
 
-function onWalletConnected() {
-  const w = STATE.wallet;
+function onConnected() {
+  const w = S.wallet;
   const btn = document.getElementById('walletBtn');
-  btn.classList.add('connected');
-  btn.innerHTML = `<span class="wallet-icon">${w.type==='unisat'?'🟠':'🔵'}</span>
-    <span>${truncate(w.address)}</span>`;
-  document.getElementById('disconnectItem').style.display = 'flex';
-  document.getElementById('walletStatus').innerHTML =
-    `<span style="color:var(--green)">✓</span> ${w.type === 'unisat' ? 'UniSat' : 'OP_NET'}: ${truncate(w.address)}`;
-
-  // Save connection to localStorage for persistence
-  localStorage.setItem('satanchor_wallet_type', w.type);
-  localStorage.setItem('satanchor_wallet_address', w.address);
-
-  refreshMyVaults();
+  btn.className = 'btn-wallet connected';
+  btn.innerHTML = `<span>${w.type==='unisat'?'🟠':'🔵'}</span><span>${trunc(w.address)}</span>`;
+  document.getElementById('discItem').style.display = 'flex';
+  document.getElementById('walletStatus').innerHTML = `<span style="color:var(--green)">✓</span> ${trunc(w.address)}`;
+  localStorage.setItem('sa_wtype', w.type);
+  refresh();
 }
 
-function disconnectWallet() {
-  STATE.wallet = null;
+function disconnect() {
+  S.wallet = null;
   document.getElementById('walletMenu').classList.remove('open');
   const btn = document.getElementById('walletBtn');
-  btn.classList.remove('connected');
-  btn.innerHTML = `<span class="wallet-icon">⬡</span><span id="walletLabel">Connect Wallet</span>`;
-  document.getElementById('disconnectItem').style.display = 'none';
-  document.getElementById('walletStatus').innerHTML = `<span style="color:var(--muted)">Not connected</span>`;
-  localStorage.removeItem('satanchor_wallet_type');
-  localStorage.removeItem('satanchor_wallet_address');
-  refreshMyVaults();
-  notify('Disconnected', '', 'info');
+  btn.className = 'btn-wallet';
+  btn.innerHTML = '<span>⬡</span><span>Connect Wallet</span>';
+  document.getElementById('discItem').style.display = 'none';
+  document.getElementById('walletStatus').textContent = 'Not connected';
+  localStorage.removeItem('sa_wtype');
+  refresh();
+  notify('Disconnected','','info');
 }
 
-/* ═══════════════════════════════════════════════════
-   MEMPOOL API
-═══════════════════════════════════════════════════ */
-async function fetchBlockHeight() {
-  try {
-    const res = await fetch(`${MEMPOOL_API}/blocks/tip/height`);
-    const height = await res.json();
-    STATE.currentBlock = height;
-    document.getElementById('liveBlock').textContent = height.toLocaleString();
-    document.getElementById('nowBlock').textContent = '#' + height.toLocaleString();
-    document.getElementById('condCurrentBlock').textContent = '#' + height.toLocaleString();
-
-    // Timeline fill: progress from genesis to halving 5
-    const pct = Math.min(100, (height / 1050000) * 100);
-    document.getElementById('timelineFill').style.width = pct + '%';
-
-    // Halving info
-    const next = 1050000;
-    const blocksLeft = next - height;
-    document.getElementById('halvBlock').textContent = 'Block #1,050,000';
-    document.getElementById('halvBlocks').textContent =
-      `~${blocksLeft.toLocaleString()} blocks away · approx. ${halvingYear(blocksLeft)}`;
-
-    refreshStats();
-  } catch(e) {
-    document.getElementById('liveBlock').textContent = 'offline';
-  }
+function diagnose() {
+  document.getElementById('walletMenu').classList.remove('open');
+  const checks = [['window.unisat',window.unisat],['window.opnet',window.opnet],['window.opwallet',window.opwallet]];
+  const found   = checks.filter(([,v])=>v!=null).map(([k])=>k);
+  const missing = checks.filter(([,v])=>v==null).map(([k])=>k);
+  notify('Wallet Detection', (found.length?'Found: '+found.join(', '):'')+' '+(missing.length?'| Missing: '+missing.join(', '):''), found.length?'success':'error');
+  console.table(Object.fromEntries(checks.map(([k,v])=>[k,v?'✓ present':'✗ missing'])));
 }
 
-function halvingYear(blocksLeft) {
-  const mins = blocksLeft * 10;
-  const date = new Date(Date.now() + mins * 60000);
-  return date.getFullYear();
-}
-
-async function broadcastTx(rawHex) {
-  const res = await fetch(`${MEMPOOL_API}/tx`, {
-    method:'POST',
-    headers:{'Content-Type':'text/plain'},
-    body: rawHex,
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(err);
-  }
-  return await res.text(); // txid
-}
-
-async function checkUtxo(address) {
-  // For OP_NET Taproot addresses (tb1p...) use their testnet explorer
-  // For standard testnet (tb1q...) use mempool.space
-  const api = address.startsWith('tb1p')
-    ? `https://mempool.space/testnet/api/address/${address}/utxo`
-    : `${MEMPOOL_API}/address/${address}/utxo`;
-  const res = await fetch(api);
-  if (!res.ok) throw new Error(`UTXO fetch failed (${res.status}): ${await res.text()}`);
-  return await res.json();
-}
-
-/* ═══════════════════════════════════════════════════
-   VAULT CREATION
-═══════════════════════════════════════════════════ */
-async function createVault() {
-  if (!STATE.wallet) {
-    notify('Wallet required', 'Connect UniSat or OP_NET wallet first', 'warning');
-    return;
-  }
+/* ─── ANCHOR CREATION ─── */
+async function createAnchor() {
+  if (!S.wallet) { notify('Wallet required','Connect wallet first','warning'); return; }
 
   const msg = document.getElementById('f-msg').value.trim();
-  if (!msg) { notify('Message required', 'Write a message for your anchor', 'warning'); return; }
+  if (!msg) { notify('Message required','Write a message','warning'); return; }
 
   const amount = parseInt(document.getElementById('f-amount').value);
-  if (!amount || amount < 546) {
-    notify('Invalid amount', 'Minimum is 546 satoshis (dust limit)', 'warning'); return;
-  }
+  if (!amount||amount<1000) { notify('Invalid amount','Minimum 1000 sats','warning'); return; }
 
-  let cltvValue;
-  let condLabel;
-
-  if (STATE.condTab === 'block') {
+  let cltvValue, condLabel;
+  if (S.condTab==='block') {
     cltvValue = parseInt(document.getElementById('f-block').value);
-    if (!cltvValue || cltvValue < STATE.currentBlock) {
-      notify('Invalid block', 'Block height must be in the future', 'warning'); return;
-    }
+    if (!cltvValue||cltvValue<=S.block) { notify('Invalid block','Must be in the future','warning'); return; }
     condLabel = `Block #${cltvValue.toLocaleString()}`;
-  } else if (STATE.condTab === 'date') {
+  } else if (S.condTab==='date') {
     const d = document.getElementById('f-date').value;
-    if (!d) { notify('Select a date', '', 'warning'); return; }
-    cltvValue = Math.floor(new Date(d).getTime() / 1000);
-    if (cltvValue < Date.now()/1000) {
-      notify('Date must be in the future', '', 'warning'); return;
-    }
+    if (!d) { notify('Select a date','','warning'); return; }
+    cltvValue = Math.floor(new Date(d).getTime()/1000);
+    if (cltvValue<Date.now()/1000) { notify('Date in the past','','warning'); return; }
     condLabel = `Date: ${d}`;
   } else {
-    const halvNum = parseInt(document.getElementById('f-halving').value);
-    cltvValue = HALVING_BLOCKS[halvNum];
-    condLabel = `Halving #${halvNum} (Block #${cltvValue.toLocaleString()})`;
+    const n = parseInt(document.getElementById('f-halving').value);
+    cltvValue = HALVING[n];
+    condLabel = `Halving #${n} (Block #${cltvValue.toLocaleString()})`;
   }
 
   const btn = document.getElementById('createBtn');
   btn.disabled = true;
-  btn.textContent = 'Creating...';
-
-  const statusEl = document.getElementById('createStatus');
-  statusEl.innerHTML = renderTxProgress([
-    { id:'s1', label:'Generating anchor script', state:'active' },
-    { id:'s2', label:'Signing transaction', state:'pending' },
-    { id:'s3', label:'Broadcasting to testnet', state:'pending' },
-  ]);
+  const status = document.getElementById('createStatus');
+  status.innerHTML = steps(['Preparing anchor','Signing transaction','Broadcasting']);
 
   try {
-    // 1. Build vault ID and commitment
-    const vaultId = bytesToHex(crypto.getRandomValues(new Uint8Array(8)));
-    const msgHash = await sha256(msg);
+    // 1. IDs & commitment
+    const anchorId = hex(rand(8));
+    const msgHash  = await sha256hex(msg);
 
-    // 2. Encrypt if needed
-    let encBlob = null, encKey = null, storedMsg = msg;
-    if (STATE.encryptOn) {
-      const enc = await encryptMessage(msg);
-      encBlob = enc.blob;
-      encKey = enc.key;
-      storedMsg = '[ENCRYPTED]';
+    // 2. Encrypt?
+    let blob=null, encKey=null, storedMsg=msg;
+    if (S.encrypt) {
+      const r = await encrypt(msg);
+      blob=r.blob; encKey=r.key; storedMsg='[ENCRYPTED]';
     }
 
-    // 3. Build CLTV script
-    // For OP_NET (no pubkey available), we store script params but skip PSBT building
-    const pubkey = STATE.wallet.pubkey || '';
-    const hasFullPubkey = pubkey && pubkey.length >= 66; // 33 bytes compressed = 66 hex chars
-    if (!hasFullPubkey && STATE.wallet.type === 'unisat') {
-      throw new Error('Wallet did not provide public key. Please update UniSat extension.');
-    }
+    setStep(0,'done'); setStep(1,'active');
 
-    let redeemScript, redeemHex, vaultAddress, opReturnScript;
-    if (hasFullPubkey) {
-      redeemScript = buildCLTVRedeemScript(pubkey, cltvValue);
-      redeemHex = bytesToHex(redeemScript);
-      vaultAddress = await buildP2WSHAddress(redeemScript);
+    let txid = null;
+    let anchorAddr = S.wallet.address; // default: own address
+
+    if (S.wallet.type==='unisat') {
+      txid = await sendUniSat(amount, anchorId, msgHash);
     } else {
-      // OP_NET: no compressed pubkey available — vault stored locally, BTC sent to own address
-      redeemHex = '';
-      vaultAddress = STATE.wallet.address; // funds stay in wallet for now
-      notify('Note', 'OP_NET does not expose compressed pubkey — vault saved locally without P2WSH address', 'warning');
-    }
-    opReturnScript = await buildOPReturnScript(vaultId, msgHash);
-
-    setStep('s1', 'done');
-    setStep('s2', 'active');
-
-    // 4. Sign transaction via wallet
-    let txid;
-    let rawTx;
-
-    if (STATE.wallet.type === 'unisat') {
-      // UniSat: send BTC to vault address via sendBitcoin
-      // For full CLTV tx with OP_RETURN, we build a PSBT
-      txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
-    } else {
-      txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
+      txid = await sendOPWallet(amount, anchorId, msgHash);
     }
 
-    setStep('s2', 'done');
-    setStep('s3', 'active');
+    setStep(1,'done'); setStep(2,'active');
+    setStep(2,'done');
 
-    // If txid returned (wallet handled broadcast)
-    if (txid) {
-      setStep('s3', 'done');
-    }
-
-    // 5. Save vault
-    const vault = {
-      id: vaultId,
-      owner: STATE.wallet.address,
-      walletType: STATE.wallet.type,
-      pubkey,
-      message: storedMsg,
-      msgHash,
-      encBlob,
-      cltvValue,
-      condLabel,
-      condType: STATE.condTab,
-      redeemScript: redeemHex,
-      address: vaultAddress,
-      amount,
-      txid: txid || null,
-      status: txid ? 'active' : 'pending',
-      encrypted: STATE.encryptOn,
-      network: NETWORK,
-      createdAt: Date.now(),
+    // 3. Save
+    const anchor = {
+      id: anchorId, owner: S.wallet.address, walletType: S.wallet.type,
+      pubkey: S.wallet.pubkey, message: storedMsg, msgHash,
+      encBlob: blob, cltvValue, condLabel, condType: S.condTab,
+      address: anchorAddr, amount, txid, encrypted: S.encrypt,
+      status: txid?'active':'pending', network:'testnet', createdAt: Date.now(),
     };
+    addA(anchor);
 
-    addVault(vault);
+    let html = `<div class="success-box">
+      <div class="success-label">✓ Anchor Created</div>
+      <div style="font-size:11px;color:var(--muted2);margin-bottom:4px">ID: ${anchorId}</div>
+      ${txid?`<a class="txlink" href="https://mempool.space/testnet/tx/${txid}" target="_blank">View transaction ↗</a>`:'<div style="font-size:10px;color:var(--muted)">Saved locally (no txid)</div>'}
+    </div>`;
 
-    // Show success with key warning if encrypted
-    let successHtml = `
-      <div style="background:rgba(58,154,106,0.08);border:1px solid rgba(58,154,106,0.3);padding:16px;margin-top:16px;">
-        <div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:var(--green);margin-bottom:8px;">✓ Anchor Created</div>
-        <div style="font-size:11px;color:var(--text);margin-bottom:6px;">ID: ${vaultId}</div>
-        <div style="font-size:11px;color:var(--muted2);">Address: <span style="color:var(--text)">${vaultAddress}</span></div>
-        ${txid ? `<div style="margin-top:8px;font-size:10px;">
-          TXID: <a class="txid-link" href="https://mempool.space/testnet/tx/${txid}" target="_blank">${truncate(txid,20)}</a>
-        </div>` : ''}
+    if (encKey) {
+      html += `<div class="key-box">
+        <div class="key-label">⚠ Save Encryption Key — Shown Once</div>
+        <div class="key-val">${encKey}</div>
+        <button class="copy-btn" onclick="copyText('${encKey}',this)">Copy Key</button>
       </div>`;
-
-    if (STATE.encryptOn && encKey) {
-      successHtml += `
-        <div class="key-box" style="margin-top:12px;">
-          <div class="key-box-label">⚠ Save Your Encryption Key — Shown Once Only</div>
-          <div class="key-box-val">${encKey}</div>
-          <button class="copy-btn" onclick="copyText('${encKey}',this)">Copy Key</button>
-        </div>`;
     }
-
-    statusEl.innerHTML = successHtml;
+    status.innerHTML = html;
     notify('Anchor Created!', condLabel, 'success');
-
-    // Reset form
     document.getElementById('f-msg').value = '';
     document.getElementById('f-amount').value = '';
 
   } catch(e) {
-    setStep('s2', 'error');
-    statusEl.innerHTML += `<div style="color:var(--red);font-size:11px;margin-top:12px;">Error: ${e.message}</div>`;
+    setStep(1,'error');
+    status.innerHTML += `<div style="color:var(--red);font-size:11px;margin-top:12px;padding:12px;border:1px solid rgba(192,64,64,.3)">Error: ${e.message}</div>`;
     notify('Creation failed', e.message, 'error');
   }
-
   btn.disabled = false;
   btn.textContent = 'Create Anchor →';
 }
 
-async function sendViaUniSat(toAddress, amountSats, opReturnScript) {
-  // UniSat supports sendBitcoin for simple transfers
-  // For OP_RETURN, we use signPsbt with custom outputs
-  const unisat = window.unisat;
-
-  // Try PSBT approach first (full control)
+/* ─── UNISAT TX ─── */
+async function sendUniSat(amountSats, anchorId, msgHash) {
+  const p = S.wallet.provider;
+  // Use PSBT for full control (OP_RETURN + vault address)
   try {
-    // Get UTXOs from mempool
-    const utxos = await checkUtxo(STATE.wallet.address);
-    if (!utxos || utxos.length === 0) {
-      throw new Error('No UTXOs found. Get testnet BTC from a faucet first: https://testnet-faucet.mempool.co');
-    }
+    const utxos = await fetchUTXOs(S.wallet.address);
+    if (!utxos||!utxos.length) throw new Error('no_utxo');
+    const fee = 2500;
+    let sel=[], tot=0;
+    for(const u of utxos){ sel.push(u); tot+=u.value; if(tot>=amountSats+fee) break; }
+    if(tot<amountSats+fee) throw new Error(`Insufficient: have ${tot} sats`);
 
-    // Build PSBT manually
-    const psbt = await buildPSBT(utxos, toAddress, amountSats, opReturnScript);
-    const psbtHex = bytesToHex(psbt);
-
-    const signedPsbt = await unisat.signPsbt(psbtHex, {
-      autoFinalized: true,
-    });
-
-    // Extract and broadcast
-    const txHex = psbtToTxHex(signedPsbt);
-    const txid = await broadcastTx(txHex);
+    // Self-transfer via signPsbt — simple and reliable
+    const psbt = await buildSimplePSBT_UniSat(sel, S.wallet.address, amountSats, tot-amountSats-fee, S.wallet.address);
+    const signed = await p.signPsbt(psbt, { autoFinalized:true });
+    const txid = await broadcastTx(signed);
     return txid;
-
-  } catch(psbtErr) {
-    // Fallback: simple sendBitcoin (no OP_RETURN, but functional)
-    console.warn('PSBT failed, using sendBitcoin fallback:', psbtErr.message);
-    notify('Note', 'Using simplified transaction (no OP_RETURN). PSBT: ' + psbtErr.message, 'warning');
-
-    const txid = await unisat.sendBitcoin(toAddress, amountSats);
-    return txid;
+  } catch(e) {
+    if (e.message==='no_utxo') throw new Error('No testnet BTC. Get tBTC at: https://testnet-faucet.mempool.co/');
+    // Fallback: sendBitcoin
+    if (/Insufficient/i.test(e.message)) throw e;
+    notify('Note','Using simple transfer','warning');
+    return await p.sendBitcoin(S.wallet.address, amountSats);
   }
 }
 
-async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
-  const provider = STATE.wallet._provider || window.opnet || window.opwallet;
-  if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
-
-  // 1. Get UTXOs directly from OP_WALLET (their own node, no external API)
-  let utxos;
-  try {
-    utxos = await provider.getBitcoinUtxos();
-    console.log('OP_WALLET UTXOs:', utxos);
-  } catch(e) {
-    throw new Error('Failed to get UTXOs from OP_WALLET: ' + e.message);
-  }
-  if (!utxos || utxos.length === 0) {
-    throw new Error('No UTXOs found. Get tBTC at: https://faucet.opnet.org/');
-  }
-
-  // 2. Select UTXOs to cover amount + fee
-  const FEE = 3000;
-  const need = amountSats + FEE;
-  let selected = [], total = 0;
-  for (const u of utxos) {
-    selected.push(u);
-    total += parseInt(u.value);
-    if (total >= need) break;
-  }
-  if (total < need) {
-    throw new Error(
-      `Insufficient balance. Have: ${total.toLocaleString()} sats, ` +
-      `need: ${need.toLocaleString()} sats.`
-    );
-  }
-
-  const changeAmount = total - amountSats - FEE;
-  const selfAddress = STATE.wallet.address;
-
-  // 3. Get pubkey for signing
-  let pubkeyHex = STATE.wallet.pubkey || '';
-  if (!pubkeyHex) {
-    try { pubkeyHex = await provider.getPublicKey(); } catch(_) {}
-  }
-  console.log('pubkey:', pubkeyHex, 'length:', pubkeyHex.length);
-
-  // 4. Build PSBT using OP_WALLET's Taproot address format
-  // OP_WALLET uses "opt1p..." prefix internally but signs standard Taproot
-  // The scriptPubKey hex from UTXO is the ground truth
-  const psbtBytes = await buildOPNetPSBT(selected, toAddress, amountSats, changeAmount, selfAddress, pubkeyHex);
-  const psbtHex = bytesToHex(psbtBytes);
-  console.log('PSBT hex length:', psbtHex.length);
-
-  // 5. Sign via OP_WALLET
-  notify('Approve in OP_WALLET...', 'Check the OP_WALLET popup', 'info');
-  await new Promise(r => setTimeout(r, 200));
-
-  let signedPsbt;
-  try {
-    // For Taproot (opt1p/tb1p): let OP_WALLET auto-detect signing key
-    // Do NOT pass toSignInputs — wallet knows which key matches its own UTXOs
-    signedPsbt = await Promise.race([
-      provider.signPsbt(psbtHex, { autoFinalized: true }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('OP_WALLET signPsbt timed out after 30s')), 30000)
-      )
-    ]);
-    console.log('signPsbt result:', typeof signedPsbt, signedPsbt?.length);
-  } catch(e) {
-    console.error('signPsbt error:', e);
-    if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) {
-      throw new Error('Transaction cancelled by user');
-    }
-    throw new Error('signPsbt failed: ' + (e.message || String(e)));
-  }
-
-  // 6. Broadcast via OP_WALLET's pushTx or pushPsbt
-  notify('Broadcasting...', 'Sending to OPNet network', 'info');
-  try {
-    // Try pushTx first (expects raw tx hex), then pushPsbt (expects psbt hex)
-    let txid;
-    try {
-      txid = await provider.pushTx({ rawtx: signedPsbt });
-    } catch(_) {
-      txid = await provider.pushPsbt(signedPsbt);
-    }
-    console.log('broadcast result:', txid);
-    const id = typeof txid === 'string' ? txid : txid?.txid || txid?.hash || null;
-    return id;
-  } catch(e) {
-    throw new Error('Broadcast failed: ' + (e.message || String(e)));
-  }
-}
-
-async function buildOPNetPSBT(utxos, toAddress, amountSats, changeAmount, changeAddress, pubkeyHex) {
-  // PSBT v0 structure for Taproot inputs
-  // Magic: "psbt" + 0xff separator
-  const PSBT_MAGIC = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]);
-
-  // Build unsigned transaction first
-  const inputs = utxos.map(u => ({
-    txid: u.transactionId,
-    vout: u.outputIndex,
-    scriptPubKeyHex: u.scriptPubKey.hex,
-    value: parseInt(u.value),
-    nonWitnessUtxoBase64: u.nonWitnessUtxoBase64,
-  }));
-
-  // Build outputs
-  const outputs = [];
-
-  // Output 0: to vault address (toAddress)
-  const toScript = addressToScriptPubKey(toAddress);
-  outputs.push({ value: amountSats, scriptHex: bytesToHex(toScript) });
-
-  // Output 1: change back to self
-  if (changeAmount >= 546) {
-    const changeScript = addressToScriptPubKey(changeAddress);
-    outputs.push({ value: changeAmount, scriptHex: bytesToHex(changeScript) });
-  }
-
-  // Build raw unsigned tx bytes
-  const rawTx = buildRawTx(inputs, outputs);
-
-  // Assemble PSBT
-  const parts = [PSBT_MAGIC];
-
-  // Global: PSBT_GLOBAL_UNSIGNED_TX (key=0x01 0x00)
-  parts.push(new Uint8Array([0x01, 0x00]));
-  parts.push(encodeVarInt(rawTx.length));
-  parts.push(rawTx);
-  parts.push(new Uint8Array([0x00])); // end globals
-
-  // Per-input maps
-  for (const inp of inputs) {
-    // PSBT_IN_NON_WITNESS_UTXO (key type 0x00) — full prev tx
-    if (inp.nonWitnessUtxoBase64) {
-      const prevTxBytes = base64ToBytes(inp.nonWitnessUtxoBase64);
-      parts.push(new Uint8Array([0x01, 0x00])); // key length 1, key type 0x00
-      parts.push(encodeVarInt(prevTxBytes.length));
-      parts.push(prevTxBytes);
-    }
-    // PSBT_IN_WITNESS_UTXO (key type 0x01) — for segwit/taproot
-    const witnessOut = buildTxOutputBytes(inp.value, hexToBytes(inp.scriptPubKeyHex));
-    parts.push(new Uint8Array([0x01, 0x01]));
-    parts.push(encodeVarInt(witnessOut.length));
-    parts.push(witnessOut);
-
-    parts.push(new Uint8Array([0x00])); // end this input
-  }
-
-  // Per-output maps (empty for each output)
-  for (let i = 0; i < outputs.length; i++) {
+async function buildSimplePSBT_UniSat(utxos, toAddr, toSats, changeSats, changeAddr) {
+  // For UniSat (P2WPKH / tb1q addresses): use PSBT_IN_WITNESS_UTXO only (no taproot key)
+  const ver=new Uint8Array([0x02,0,0,0]), lock=new Uint8Array([0,0,0,0]), seq=new Uint8Array([0xfd,0xff,0xff,0xff]);
+  const ins=utxos.map(u=>cat(unhex(u.txid).reverse(),uint32LE(u.vout),new Uint8Array([0]),seq));
+  const toScript=addrToScript(toAddr);
+  const outs=[cat(uint64LE(toSats),varInt(toScript.length),toScript)];
+  if(changeSats>=546){const ch=addrToScript(changeAddr);outs.push(cat(uint64LE(changeSats),varInt(ch.length),ch));}
+  const utx=cat(ver,varInt(ins.length),...ins,varInt(outs.length),...outs,lock);
+  const parts=[new Uint8Array([0x70,0x73,0x62,0x74,0xff])];
+  parts.push(kv(new Uint8Array([0x00]),utx));
+  parts.push(new Uint8Array([0x00]));
+  for(const u of utxos){
+    const spk=await fetchScriptPubKey(u.txid,u.vout);
+    const wu=cat(uint64LE(u.value),varInt(spk.length),spk);
+    parts.push(kv(new Uint8Array([0x01]),wu));
     parts.push(new Uint8Array([0x00]));
   }
-
-  // Concatenate all parts
-  const total = parts.reduce((s, p) => s + p.length, 0);
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const p of parts) { result.set(p, offset); offset += p.length; }
-  return result;
+  for(let i=0;i<outs.length;i++) parts.push(new Uint8Array([0x00]));
+  return hex(cat(...parts));
 }
 
-function buildRawTx(inputs, outputs) {
-  const version = new Uint8Array([0x02, 0x00, 0x00, 0x00]);
-  const locktime = new Uint8Array([0x00, 0x00, 0x00, 0x00]);
-  const seq = new Uint8Array([0xfd, 0xff, 0xff, 0xff]);
-
-  const inCount = encodeVarInt(inputs.length);
-  const inputBytes = inputs.map(inp => {
-    const txid = hexToBytes(inp.txid).reverse();
-    const vout = new Uint8Array(4);
-    new DataView(vout.buffer).setUint32(0, inp.vout, true);
-    const scriptSig = new Uint8Array([0x00]); // empty for segwit
-    return concat([txid, vout, scriptSig, seq]);
-  });
-
-  const outCount = encodeVarInt(outputs.length);
-  const outputBytes = outputs.map(out => {
-    const scriptBytes = hexToBytes(out.scriptHex);
-    return buildTxOutputBytes(out.value, scriptBytes);
-  });
-
-  return concat([version, inCount, ...inputBytes, outCount, ...outputBytes, locktime]);
-}
-
-function buildTxOutputBytes(valueSats, scriptPubKey) {
-  const val = new Uint8Array(8);
-  let v = BigInt(valueSats);
-  for (let i = 0; i < 8; i++) { val[i] = Number(v & 0xffn); v >>= 8n; }
-  return concat([val, encodeVarInt(scriptPubKey.length), scriptPubKey]);
-}
-
-function addressToScriptPubKey(address) {
-  // Handle both standard bech32 (tb1q/bc1q) and OP_NET custom (opt1p) addresses
-  // All are bech32/bech32m encoded — decode witness program
+async function fetchScriptPubKey(txid, vout) {
   try {
-    const witProg = bech32Decode(address);
-    // Determine witness version from address
-    // tb1q/bc1q = v0 (OP_0), tb1p/opt1p = v1 (OP_1 = 0x51)
-    const isV1 = address.includes('1p') || address.startsWith('opt1');
-    const witVer = isV1 ? 0x51 : 0x00;
-    return new Uint8Array([witVer, witProg.length, ...witProg]);
+    const tx = await (await fetch(`${MEMPOOL}/tx/${txid}`)).json();
+    return unhex(tx.vout[vout].scriptpubkey);
+  } catch(_) { return new Uint8Array([0,20,...rand(20)]); }
+}
+
+async function fetchUTXOs(address) {
+  const r = await fetch(`${MEMPOOL}/address/${address}/utxo`);
+  if (!r.ok) throw new Error(`UTXO fetch failed: ${r.status}`);
+  return await r.json();
+}
+
+async function broadcastTx(txHex) {
+  const r = await fetch(`${MEMPOOL}/tx`, { method:'POST', headers:{'Content-Type':'text/plain'}, body:txHex });
+  if (!r.ok) { const t=await r.text(); throw new Error('Broadcast failed: '+t); }
+  return await r.text();
+}
+
+/* ─── OP_WALLET TX ─── */
+async function sendOPWallet(amountSats, anchorId, msgHash) {
+  const p = S.wallet.provider;
+
+  // Step 1: check address type
+  const addr = S.wallet.address;
+  if (addr.startsWith('bcrt1')) {
+    throw new Error('OP_WALLET is on Regtest. Open OP_WALLET → click network icon → switch to "OPNet Testnet" → reconnect.');
+  }
+
+  // Step 2: get UTXOs from OP_WALLET (their own node, no external API needed)
+  let utxos;
+  try { utxos = await p.getBitcoinUtxos(); } catch(e) { throw new Error('getBitcoinUtxos failed: '+e.message); }
+  if (!utxos||!utxos.length) throw new Error('No UTXOs. Get tBTC at: https://faucet.opnet.org/');
+
+  console.log('OP_WALLET UTXOs:', JSON.stringify(utxos.map(u=>({txid:u.transactionId,vout:u.outputIndex,value:u.value,spk:u.scriptPubKey.hex}))));
+
+  // Step 3: select UTXOs
+  const FEE = 3000;
+  let sel=[], tot=0;
+  for (const u of utxos) { sel.push(u); tot+=parseInt(u.value); if(tot>=amountSats+FEE) break; }
+  if (tot<amountSats+FEE) throw new Error(`Not enough funds: have ${tot} sats, need ${amountSats+FEE}`);
+
+  const change = tot - amountSats - FEE;
+
+  // Step 4: build PSBT
+  const psbtHex = await buildPSBT(sel, addr, amountSats, change, addr);
+  console.log('PSBT hex:', psbtHex.slice(0,80)+'...');
+
+  // Step 5: sign
+  notify('Approve in OP_WALLET...','Check the popup','info');
+  await new Promise(r=>setTimeout(r,200));
+
+  let signed;
+  try {
+    signed = await Promise.race([
+      p.signPsbt(psbtHex, { autoFinalized: true }),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('signPsbt timed out after 30s')),30000))
+    ]);
+    console.log('signPsbt OK, len:', signed?.length);
   } catch(e) {
-    console.error('addressToScriptPubKey failed for:', address, e);
-    return new Uint8Array([0x51, 0x20, ...new Uint8Array(32)]); // fallback
+    if (e.code===4001||/reject|cancel/i.test(e.message||'')) throw new Error('Transaction cancelled');
+    throw new Error('signPsbt error: '+e.message);
+  }
+
+  // Step 6: broadcast via OP_WALLET
+  try {
+    let result;
+    try   { result = await p.pushTx({rawtx: signed}); }
+    catch (_) { result = await p.pushPsbt(signed); }
+    console.log('broadcast result:', result);
+    const txid = typeof result==='string' ? result : result?.txid||result?.hash||null;
+    return txid||null;
+  } catch(e) {
+    throw new Error('Broadcast failed: '+e.message);
   }
 }
 
-function base64ToBytes(b64) {
-  const bin = atob(b64);
-  return new Uint8Array(bin.split('').map(c => c.charCodeAt(0)));
+/* ─── UI HELPERS ─── */
+function showPage(tab) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('page-'+tab.dataset.page).classList.add('active');
+  tab.classList.add('active');
+  if (tab.dataset.page==='archive') renderArchive();
 }
 
-function concat(arrays) {
-  const total = arrays.reduce((s, a) => s + a.length, 0);
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const a of arrays) { out.set(a, off); off += a.length; }
-  return out;
-}
-
-function bech32Decode(address) {
-  const lower = address.toLowerCase();
-  const sepIdx = lower.lastIndexOf('1');
-  const data = lower.slice(sepIdx+1, -6).split('').map(c => BECH32_CHARSET.indexOf(c));
-  const decoded = convertBits(data.slice(1), 5, 8, false); // skip witness version
-  return new Uint8Array(decoded);
-}
-
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  event.target.classList.add('active');
-
-  if (id === 'archive') renderArchive();
-}
-
-function setCondTab(tab) {
-  STATE.condTab = tab;
-  document.querySelectorAll('.cond-tab').forEach(t => t.classList.remove('active'));
-  event.target.classList.add('active');
-  document.getElementById('cond-block').style.display = tab==='block' ? 'block' : 'none';
-  document.getElementById('cond-date').style.display = tab==='date' ? 'block' : 'none';
-  document.getElementById('cond-halving').style.display = tab==='halving' ? 'block' : 'none';
+function setTab(tab, el) {
+  S.condTab = tab;
+  document.querySelectorAll('.cond-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['block','date','halving'].forEach(t=>{ document.getElementById('tab-'+t).style.display=t===tab?'block':'none'; });
   updatePreview();
 }
 
 function toggleEncrypt() {
-  STATE.encryptOn = !STATE.encryptOn;
-  const row = document.getElementById('encryptRow');
-  row.classList.toggle('on', STATE.encryptOn);
+  S.encrypt = !S.encrypt;
+  document.getElementById('encRow').classList.toggle('on', S.encrypt);
 }
 
 async function updatePreview() {
   const msg = document.getElementById('f-msg').value || 'Your message here...';
-  const prevMsg = document.getElementById('prev-msg');
-  prevMsg.textContent = STATE.encryptOn ? '[ENCRYPTED]' : `"${msg}"`;
-  prevMsg.style.color = STATE.encryptOn ? 'var(--amber)' : 'var(--text)';
+  const pm  = document.getElementById('prev-msg');
+  pm.textContent = S.encrypt ? '[ENCRYPTED]' : `"${msg}"`;
+  pm.style.color = S.encrypt ? 'var(--amber)' : 'var(--text)';
 
   let cond = 'Set condition above';
-  if (STATE.condTab === 'block') {
-    const v = document.getElementById('f-block').value;
-    if (v) cond = `Unlocks at block #${Number(v).toLocaleString()}`;
-  } else if (STATE.condTab === 'date') {
-    const v = document.getElementById('f-date').value;
-    if (v) cond = `Unlocks on ${v}`;
-  } else {
-    const v = document.getElementById('f-halving').value;
-    cond = `Unlocks at halving #${v}`;
-  }
+  if (S.condTab==='block') { const v=document.getElementById('f-block').value; if(v) cond=`Unlocks at block #${Number(v).toLocaleString()}`; }
+  else if (S.condTab==='date') { const v=document.getElementById('f-date').value; if(v) cond=`Unlocks on ${v}`; }
+  else { const v=document.getElementById('f-halving').value; cond=`Unlocks at halving #${v}`; }
   document.getElementById('prev-cond').textContent = cond;
-
-  if (msg.length > 3) {
-    const hash = await sha256(msg);
-    document.getElementById('prev-hash').textContent = 'SHA256: ' + hash.slice(0,32) + '...';
+  document.getElementById('prev-id').textContent   = '— — — — (generated on create)';
+  if (msg.length>3) {
+    const h = await sha256hex(msg);
+    document.getElementById('prev-hash').textContent = 'SHA256: '+h.slice(0,32)+'...';
   }
 }
 
-function renderTxProgress(steps) {
-  return `<div class="tx-progress">${steps.map(s =>
-    `<div class="tx-step ${s.state}" id="${s.id}">
-      <div class="step-dot"></div>${s.label}
-    </div>`
-  ).join('')}</div>`;
+function steps(labels) {
+  return `<div class="tx-progress">${labels.map((l,i)=>`<div class="tx-step ${i===0?'active':'pending'}" id="step${i}"><div class="step-dot"></div>${l}</div>`).join('')}</div>`;
 }
+function setStep(i, state) { const el=document.getElementById('step'+i); if(el) el.className='tx-step '+state; }
 
-function setStep(id, state) {
-  const el = document.getElementById(id);
-  if (el) el.className = `tx-step ${state}`;
-}
-
-/* ═══════════════════════════════════════════════════
-   REFRESH UI
-═══════════════════════════════════════════════════ */
-function refreshAll() {
+function refresh() {
   refreshStats();
-  refreshMyVaults();
-  if (document.getElementById('page-archive').classList.contains('active'))
-    renderArchive();
+  renderMyAnchors();
 }
 
 function refreshStats() {
-  const vaults = STATE.vaults;
-  const mine = STATE.wallet ? vaults.filter(v=>v.owner===STATE.wallet.address) : vaults;
-  const unlockable = mine.filter(v => isUnlockable(v));
-
-  document.getElementById('stat-total').textContent = mine.length;
-  document.getElementById('stat-active').textContent = mine.filter(v=>v.status==='active').length;
-  document.getElementById('stat-unlockable').textContent = unlockable.length;
-
-  const nextVault = mine
-    .filter(v=>v.status!=='spent')
-    .sort((a,b)=>a.cltvValue-b.cltvValue)[0];
-  document.getElementById('stat-next').textContent = nextVault
-    ? (nextVault.cltvValue < 500000000
-        ? '#' + nextVault.cltvValue.toLocaleString()
-        : new Date(nextVault.cltvValue*1000).getFullYear())
-    : '—';
+  const mine = myAnchors();
+  document.getElementById('s-total').textContent = mine.length;
+  document.getElementById('s-active').textContent = mine.filter(a=>a.status==='active').length;
+  document.getElementById('s-unlock').textContent = mine.filter(a=>canUnlock(a)).length;
+  const next = mine.filter(a=>a.status!=='spent').sort((a,b)=>a.cltvValue-b.cltvValue)[0];
+  document.getElementById('s-next').textContent = next ? (next.cltvValue<500000000?'#'+next.cltvValue.toLocaleString():new Date(next.cltvValue*1000).getFullYear()) : '—';
+  document.getElementById('myCount').textContent = mine.length;
 }
 
-function refreshMyVaults() {
-  const container = document.getElementById('myVaultsList');
-  const vaults = STATE.wallet
-    ? STATE.vaults.filter(v=>v.owner===STATE.wallet.address)
-    : [];
-
-  document.getElementById('myVaultCount').textContent = vaults.length;
-
-  if (!STATE.wallet) {
-    container.innerHTML = `
-      <div class="connect-prompt">
-        <div class="cp-title">Connect your wallet to begin</div>
-        <div class="cp-sub">Connect UniSat or OP_NET wallet to create<br>and manage your time-locked vaults.</div>
-        <div class="cp-btns">
-          <button class="btn-secondary" onclick="connectWallet('unisat')">🟠 UniSat</button>
-          <button class="btn-secondary" onclick="connectWallet('opnet')">🔵 OP_NET</button>
-        </div>
-      </div>`;
-    return;
-  }
-
-  if (vaults.length === 0) {
-    container.innerHTML = `<div class="empty"><span class="empty-icon">⬡</span>No vaults yet — <span style="color:var(--gold);cursor:pointer;" onclick="showPageDirect('create')">create your first</span></div>`;
-    return;
-  }
-
-  container.innerHTML = vaults.map((v,i) => `
-    <div class="vault-row" onclick="openVaultModal('${v.id}')" style="animation-delay:${i*0.06}s">
-      <div class="vr-indicator ${v.encrypted?'encrypted':'public'}"></div>
-      <div class="vr-id">ID: <span>${v.id.slice(0,8)}...</span></div>
-      <div class="vr-msg ${v.encrypted?'enc':''}">${v.encrypted ? '🔒 Encrypted message' : `"${v.message}"`}</div>
-      <div class="vr-cond"><strong>${v.condLabel}</strong>${isUnlockable(v)?'<br><span style="color:var(--amber)">Ready!</span>':''}</div>
-      <span class="status-pill ${getStatus(v)}">${getStatus(v)}</span>
-    </div>`).join('');
+function myAnchors() {
+  return S.wallet ? S.anchors.filter(a=>a.owner===S.wallet.address) : [];
 }
 
-function showPageDirect(id) {
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('page-'+id).classList.add('active');
-  document.querySelectorAll('.nav-tab')[id==='dashboard'?0:id==='create'?1:2].classList.add('active');
+function canUnlock(a) {
+  return a.cltvValue<500000000 ? S.block>=a.cltvValue : Math.floor(Date.now()/1000)>=a.cltvValue;
 }
 
-function getStatus(v) {
-  if (v.status === 'spent') return 'spent';
-  if (isUnlockable(v)) return 'unlockable';
-  if (v.txid) return 'active';
+function getStatus(a) {
+  if (a.status==='spent') return 'spent';
+  if (canUnlock(a)) return 'unlockable';
+  if (a.txid) return 'active';
   return 'pending';
 }
 
-function isUnlockable(v) {
-  if (v.cltvValue < 500000000) return STATE.currentBlock >= v.cltvValue;
-  return Math.floor(Date.now()/1000) >= v.cltvValue;
+function renderMyAnchors() {
+  const el = document.getElementById('myList');
+  if (!S.wallet) {
+    el.innerHTML = `<div class="connect-prompt">
+      <div class="cp-title">Connect your wallet to begin</div>
+      <div class="cp-sub">Connect UniSat or OP_WALLET to create<br>and manage your time-locked anchors.</div>
+      <div class="cp-btns">
+        <button class="btn-sec" onclick="connectWallet('unisat')">🟠 UniSat</button>
+        <button class="btn-sec" onclick="connectWallet('opnet')">🔵 OP_WALLET</button>
+      </div>
+    </div>`;
+    return;
+  }
+  const mine = myAnchors();
+  if (!mine.length) {
+    el.innerHTML = `<div class="empty"><span class="empty-icon">⬡</span>No anchors yet</div>`;
+    return;
+  }
+  el.innerHTML = mine.map((a,i)=>`
+    <div class="anchor-row ${a.encrypted?'enc':'pub'}" onclick="openModal('${a.id}')" style="animation-delay:${i*.05}s">
+      <div class="ar-id">ID: <span>${a.id.slice(0,8)}...</span></div>
+      <div class="ar-msg ${a.encrypted?'enc':''}">${a.encrypted?'🔒 Encrypted message':`"${a.message}"`}</div>
+      <div class="ar-cond"><strong>${a.condLabel}</strong>${canUnlock(a)?'<br><span style="color:var(--amber)">Ready!</span>':''}</div>
+      <span class="pill ${getStatus(a)}">${getStatus(a)}</span>
+    </div>`).join('');
 }
 
-/* ═══════════════════════════════════════════════════
-   ARCHIVE
-═══════════════════════════════════════════════════ */
-function filterArchive(filter, btn) {
-  STATE.archiveFilter = filter;
-  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
+/* ─── ARCHIVE ─── */
+function setFilter(f, el) {
+  S.archFilter = f;
+  document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));
+  el.classList.add('active');
   renderArchive();
 }
 
 function renderArchive() {
-  let vaults = [...STATE.vaults];
+  let list = [...S.anchors];
+  if (S.archFilter==='mine'&&S.wallet) list=list.filter(a=>a.owner===S.wallet.address);
+  else if (['active','unlockable','spent'].includes(S.archFilter)) list=list.filter(a=>getStatus(a)===S.archFilter);
 
-  if (STATE.archiveFilter === 'mine' && STATE.wallet)
-    vaults = vaults.filter(v=>v.owner===STATE.wallet.address);
-  else if (['pending','active','unlockable','spent'].includes(STATE.archiveFilter))
-    vaults = vaults.filter(v=>getStatus(v)===STATE.archiveFilter);
+  document.getElementById('archCount').textContent = list.length;
+  const body = document.getElementById('archBody');
+  if (!list.length) { body.innerHTML=`<tr><td colspan="6"><div class="empty"><span class="empty-icon">⬡</span>No anchors</div></td></tr>`; return; }
 
-  document.getElementById('archiveCount').textContent = vaults.length;
-
-  const tbody = document.getElementById('archiveBody');
-  if (vaults.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="empty"><span class="empty-icon">⬡</span>No vaults</div></td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = vaults.map(v => {
-    const mine = STATE.wallet && v.owner === STATE.wallet.address;
-    return `<tr class="${mine?'mine':''}" onclick="openVaultModal('${v.id}')">
-      <td style="font-family:'DM Mono',monospace;color:var(--gold)">${v.id.slice(0,12)}...</td>
-      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${v.encrypted?'🔒 Encrypted':v.message}</td>
-      <td>${v.condLabel}</td>
-      <td><span class="status-pill ${getStatus(v)}">${getStatus(v)}</span></td>
-      <td>${v.encrypted?'<span style="color:var(--amber)">encrypted</span>':'public'}</td>
-      <td>${v.network}</td>
-      <td style="color:var(--muted)">${timeAgo(v.createdAt)}</td>
+  body.innerHTML = list.map(a=>{
+    const mine = S.wallet&&a.owner===S.wallet.address;
+    return `<tr class="${mine?'mine':''}" onclick="openModal('${a.id}')">
+      <td style="color:var(--gold);font-family:'DM Mono',monospace">${a.id.slice(0,12)}...</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${a.encrypted?'🔒 Encrypted':a.message}</td>
+      <td>${a.condLabel}</td>
+      <td><span class="pill ${getStatus(a)}">${getStatus(a)}</span></td>
+      <td>${a.encrypted?'<span style="color:var(--amber)">encrypted</span>':'public'}</td>
+      <td style="color:var(--muted)">${ago(a.createdAt)}</td>
     </tr>`;
   }).join('');
 }
 
-/* ═══════════════════════════════════════════════════
-   VAULT MODAL
-═══════════════════════════════════════════════════ */
-function openVaultModal(id) {
-  const v = STATE.vaults.find(v=>v.id===id);
-  if (!v) return;
-
-  document.getElementById('mTitle').textContent = `Vault ${v.id.slice(0,8)}...`;
+/* ─── MODAL ─── */
+function openModal(id) {
+  const a = S.anchors.find(x=>x.id===id);
+  if (!a) return;
+  document.getElementById('mTitle').textContent = `Anchor ${a.id.slice(0,8)}...`;
 
   const rows = [
-    ['Anchor ID', v.id],
-    ['Network', v.network],
-    ['Status', `<span class="status-pill ${getStatus(v)}">${getStatus(v)}</span>`],
-    ['Condition', v.condLabel],
-    ['Address', `<a class="txid-link" href="https://mempool.space/testnet/address/${v.address}" target="_blank">${v.address||'—'}</a>`],
-    ['Amount', v.amount ? `${v.amount.toLocaleString()} sats` : '—'],
-    ['Commitment', v.msgHash ? v.msgHash.slice(0,32)+'...' : '—'],
-    ['Owner', v.owner ? truncate(v.owner) : '—'],
+    ['Anchor ID', a.id],
+    ['Status', `<span class="pill ${getStatus(a)}">${getStatus(a)}</span>`],
+    ['Condition', a.condLabel],
+    ['Amount', a.amount?a.amount.toLocaleString()+' sats':'—'],
+    ['Network', a.network],
+    ['Owner', trunc(a.owner||'—')],
+    ['TXID', a.txid?`<a class="txlink" href="https://mempool.space/testnet/tx/${a.txid}" target="_blank">${trunc(a.txid,16)} ↗</a>`:'—'],
   ];
 
-  if (v.txid) rows.push(['TX', `<a class="txid-link" href="https://mempool.space/testnet/tx/${v.txid}" target="_blank">${truncate(v.txid,20)}</a>`]);
+  let body = rows.map(([k,v])=>`<div class="modal-row"><span class="modal-key">${k}</span><span class="modal-val">${v}</span></div>`).join('');
 
-  let body = rows.map(([k,val])=>`
-    <div class="modal-row">
-      <span class="modal-key">${k}</span>
-      <span class="modal-val">${val}</span>
-    </div>`).join('');
-
-  // Message reveal
-  body += `<div class="msg-reveal">
-    <div class="msg-reveal-label">Message</div>`;
-
-  if (v.encrypted) {
-    body += `<div class="msg-reveal-text enc" id="msgRevealText">🔒 Encrypted — enter key below to reveal</div>
-      <div style="display:flex;gap:8px;margin-top:12px;">
-        <input type="text" class="field-input" id="decryptKeyInput" placeholder="Paste encryption key..." style="flex:1;">
-        <button class="btn-secondary" onclick="revealMsg('${id}')">Reveal</button>
+  body += `<div class="msg-box"><div class="msg-box-label">Message</div>`;
+  if (a.encrypted) {
+    body += `<div class="msg-text enc" id="mMsgText">🔒 Encrypted — enter key to reveal</div>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <input type="text" class="field-input" id="mKeyInput" placeholder="Paste encryption key..." style="flex:1">
+        <button class="btn-sec" onclick="revealMsg('${id}')">Reveal</button>
       </div>`;
   } else {
-    body += `<div class="msg-reveal-text">"${v.message}"</div>`;
+    body += `<div class="msg-text">"${a.message}"</div>`;
   }
   body += '</div>';
-
   document.getElementById('mBody').innerHTML = body;
 
-  // Actions
-  const mine = STATE.wallet && v.owner === STATE.wallet.address;
-  let actions = `<button class="btn-secondary" onclick="copyText('${v.address}',this)">Copy Address</button>`;
-  if (mine && isUnlockable(v)) {
-    actions += `<button class="btn-primary" style="flex:1;" onclick="unlockVault('${id}')">Unlock & Claim BTC →</button>`;
-  }
-  document.getElementById('mActions').innerHTML = actions;
+  const mine = S.wallet&&a.owner===S.wallet.address;
+  document.getElementById('mActions').innerHTML =
+    `<button class="btn-sec" onclick="copyText('${a.id}',this)">Copy ID</button>` +
+    (mine&&canUnlock(a)?`<button class="btn-primary" style="flex:1" onclick="unlockAnchor('${id}')">Unlock & Claim →</button>`:'');
 
-  document.getElementById('vaultModal').classList.add('open');
+  document.getElementById('modal').classList.add('open');
 }
 
 async function revealMsg(id) {
-  const v = STATE.vaults.find(v=>v.id===id);
-  const key = document.getElementById('decryptKeyInput').value.trim();
-  const el = document.getElementById('msgRevealText');
-  if (!key) { el.textContent = 'Enter key first'; return; }
+  const a   = S.anchors.find(x=>x.id===id);
+  const key = document.getElementById('mKeyInput').value.trim();
+  const el  = document.getElementById('mMsgText');
+  if (!key) { el.textContent='Enter key first'; return; }
   try {
-    const plain = await decryptMessage(v.encBlob, key);
-    el.className = 'msg-reveal-text';
+    const plain = await decrypt(a.encBlob, key);
+    el.className = 'msg-text';
     el.textContent = `"${plain}"`;
-  } catch(e) {
-    el.textContent = '❌ Wrong key or corrupted data';
-  }
+  } catch(_) { el.textContent = '❌ Wrong key'; }
 }
 
-async function unlockVault(id) {
-  const v = STATE.vaults.find(vv=>vv.id===id);
-  if (!v || !STATE.wallet) return;
-
-  notify('Unlock initiated', 'Building spending transaction...', 'info');
-
-  try {
-    const utxos = await checkUtxo(v.address);
-    if (!utxos || utxos.length === 0) {
-      notify('No funds', 'Vault address has no confirmed UTXOs', 'warning'); return;
-    }
-    // Build unlock tx (simplified)
-    notify('Sign required', 'Approve the transaction in your wallet', 'info');
-    // TODO: full CLTV spending tx with witness
-    notify('Coming soon', 'Full unlock tx signing in next update', 'info');
-  } catch(e) {
-    notify('Unlock failed', e.message, 'error');
-  }
+async function unlockAnchor(id) {
+  notify('Coming soon','Unlock tx signing in next update','info');
 }
 
-function closeModal() {
-  document.getElementById('vaultModal').classList.remove('open');
-}
-function closeModalOuter(e) {
-  if (e.target.id==='vaultModal') closeModal();
-}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function closeModalOuter(e) { if(e.target.id==='modal') closeModal(); }
 
-/* ═══════════════════════════════════════════════════
-   NOTIFICATIONS
-═══════════════════════════════════════════════════ */
+/* ─── NOTIFICATIONS ─── */
 function notify(title, sub, type='info') {
-  const icons = { success:'✓', error:'✕', warning:'⚠', info:'ℹ' };
-  const wrap = document.getElementById('notifWrap');
-  const el = document.createElement('div');
-  el.className = `notif ${type}`;
-  el.innerHTML = `<div class="notif-icon">${icons[type]}</div>
-    <div><div class="notif-text">${title}</div>${sub?`<div class="notif-sub">${sub}</div>`:''}</div>`;
+  const icons={success:'✓',error:'✕',warning:'⚠',info:'ℹ'};
+  const wrap=document.getElementById('notifs');
+  const el=document.createElement('div');
+  el.className=`notif ${type}`;
+  el.innerHTML=`<div class="notif-icon">${icons[type]}</div><div><div class="notif-title">${title}</div>${sub?`<div class="notif-sub">${sub}</div>`:''}</div>`;
   wrap.appendChild(el);
-  setTimeout(()=>{ el.style.opacity='0'; el.style.transform='translateX(20px)';
-    el.style.transition='all 0.3s'; setTimeout(()=>el.remove(), 300); }, 4000);
+  setTimeout(()=>{el.style.transition='all .3s';el.style.opacity='0';el.style.transform='translateX(20px)';setTimeout(()=>el.remove(),300);},4000);
 }
 
-/* ═══════════════════════════════════════════════════
-   UTILS
-═══════════════════════════════════════════════════ */
-function truncate(str, n=12) {
-  if (!str) return '—';
-  if (str.length <= n*2+3) return str;
-  return str.slice(0,n) + '...' + str.slice(-6);
-}
+/* ─── MISC ─── */
+function trunc(s,n=12) { if(!s||s.length<=n*2) return s||'—'; return s.slice(0,n)+'...'+s.slice(-6); }
+function ago(ts) { const s=Math.floor((Date.now()-ts)/1000); if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago'; if(s<86400) return Math.floor(s/3600)+'h ago'; return Math.floor(s/86400)+'d ago'; }
+async function copyText(t, btn) { await navigator.clipboard.writeText(t); if(btn){const o=btn.textContent;btn.textContent='Copied!';setTimeout(()=>btn.textContent=o,1500);} }
 
-function timeAgo(ts) {
-  const s = Math.floor((Date.now()-ts)/1000);
-  if (s<60) return 'just now';
-  if (s<3600) return Math.floor(s/60)+'m ago';
-  if (s<86400) return Math.floor(s/3600)+'h ago';
-  return Math.floor(s/86400)+'d ago';
-}
-
-async function copyText(text, btn) {
-  await navigator.clipboard.writeText(text);
-  if (btn) { const orig=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=orig,1500); }
-}
-
-/* ═══════════════════════════════════════════════════
-   WALLET DIAGNOSTICS
-═══════════════════════════════════════════════════ */
-function debugWallets() {
-  document.getElementById('walletMenu').classList.remove('open');
-  const checks = [
-    ['window.unisat',    typeof window.unisat],
-    ['window.opnet',     typeof window.opnet],
-    ['window.opwallet',  typeof window.opwallet],
-    ['window.bitcoin',   typeof window.bitcoin],
-  ];
-  const found = checks.filter(([,t]) => t !== 'undefined');
-  const missing = checks.filter(([,t]) => t === 'undefined');
-
-  let msg = '';
-  if (found.length > 0) msg += 'Found: ' + found.map(([k])=>k).join(', ');
-  if (missing.length > 0) msg += (msg?' · ':'') + 'Missing: ' + missing.map(([k])=>k).join(', ');
-
-  notify('Wallet detection', msg || 'No wallets detected', found.length > 0 ? 'success' : 'error');
-
-  // Log full details to console for debugging
-  console.group('SatAnchor — Wallet Detection');
-  checks.forEach(([k,t]) => console.log(k, '→', t, t!=='undefined' ? window[k.split('.')[1]] : ''));
-  console.groupEnd();
-  notify('Console details', 'Open DevTools (F12) → Console for full info', 'info');
-}
-
-/* ═══════════════════════════════════════════════════
-   INIT
-═══════════════════════════════════════════════════ */
-async function init() {
-  loadVaults();
-  await fetchBlockHeight();
-  setInterval(fetchBlockHeight, 30000); // refresh every 30s
-  refreshAll();
-  updatePreview();
-
-  // Check for saved wallet connection hint
-  const savedType = localStorage.getItem('satanchor_wallet_type');
-  if (savedType) {
-    notify('Reconnect wallet', `Previously used ${savedType} — click Connect`, 'info');
-  }
-}
-
-init();
+/* ─── INIT ─── */
+load();
+fetchBlock();
+setInterval(fetchBlock, 30000);
+refresh();
+updatePreview();
+document.getElementById('myList').innerHTML = `<div class="connect-prompt">
+  <div class="cp-title">Connect your wallet to begin</div>
+  <div class="cp-sub">Connect UniSat or OP_WALLET to create<br>and manage your time-locked anchors.</div>
+  <div class="cp-btns">
+    <button class="btn-sec" onclick="connectWallet('unisat')">🟠 UniSat</button>
+    <button class="btn-sec" onclick="connectWallet('opnet')">🔵 OP_WALLET</button>
+  </div>
+</div>`;
 </script>
 </body>
 </html>
