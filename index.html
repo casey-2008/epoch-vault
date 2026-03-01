@@ -1026,70 +1026,6 @@ select.field-input {
 <script>
 'use strict';
 
-const FEE_RATE = 0.03; // 3% protocol fee
-const FEE_ADDRESS = 'tb1qy7wjmecnldfl7vhf3m0cxhmu68eey46hm0afvy'; // SatAnchor treasury — REPLACE WITH YOUR ADDRESS
-
-/* ─── i18n ─── */
-const LANGS = {
-  en: {
-    navDashboard:'Dashboard', navCreate:'Create Anchor', navArchive:'Archive',
-    connect:'Connect Wallet', disconnect:'✕ Disconnect',
-    feeNote:'+ 3% protocol fee',
-    balanceSats:'sats',
-  },
-  ru: {
-    navDashboard:'Дэшборд', navCreate:'Создать якорь', navArchive:'Архив',
-    connect:'Подключить кошелёк', disconnect:'✕ Отключить',
-    feeNote:'+ 3% комиссия протокола',
-    balanceSats:'сат',
-  },
-  es: {
-    navDashboard:'Panel', navCreate:'Crear Ancla', navArchive:'Archivo',
-    connect:'Conectar Billetera', disconnect:'✕ Desconectar',
-    feeNote:'+ 3% comisión de protocolo',
-    balanceSats:'sats',
-  },
-  zh: {
-    navDashboard:'仪表板', navCreate:'创建锚点', navArchive:'档案',
-    connect:'连接钱包', disconnect:'✕ 断开连接',
-    feeNote:'+ 3% 协议费',
-    balanceSats:'聪',
-  },
-  de: {
-    navDashboard:'Dashboard', navCreate:'Anker erstellen', navArchive:'Archiv',
-    connect:'Wallet verbinden', disconnect:'✕ Trennen',
-    feeNote:'+ 3% Protokollgebühr',
-    balanceSats:'Sats',
-  },
-};
-let LANG = localStorage.getItem('sa_lang') || 'en';
-function t(k) { return (LANGS[LANG]||LANGS['en'])[k] || k; }
-function setLang(l) {
-  LANG = l;
-  localStorage.setItem('sa_lang', l);
-  applyLang();
-}
-function applyLang() {
-  // Nav tabs — find by data-page attribute (textContent safe, onclick is attribute)
-  document.querySelectorAll('.nav-tab').forEach(el => {
-    const p = el.getAttribute('data-page') || el.dataset.page;
-    if (p === 'dashboard') el.textContent = t('navDashboard');
-    else if (p === 'create') el.textContent = t('navCreate');
-    else if (p === 'archive') el.textContent = t('navArchive');
-  });
-  // Wallet button label when not connected
-  if (!STATE.wallet) {
-    const lbl = document.getElementById('walletLabel');
-    if (lbl) lbl.textContent = t('connect');
-  }
-  // Disconnect item — preserve onclick by setting only text node
-  const disc = document.getElementById('disconnectItem');
-  if (disc) disc.childNodes.forEach(n => { if(n.nodeType===3) n.textContent=t('disconnect'); });
-  // Fee note
-  const fn = document.getElementById('feeNote');
-  if (fn) fn.textContent = t('feeNote');
-}
-
 /* ═══════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════ */
@@ -1407,16 +1343,6 @@ function onWalletConnected() {
   btn.classList.add('connected');
   btn.innerHTML = `<span class="wallet-icon">${w.type==='unisat'?'🟠':'🔵'}</span>
     <span>${truncate(w.address)}</span>`;
-  // Fetch and show balance
-  (async () => {
-    try {
-      const provider = w.type === 'unisat' ? window.unisat : (window.opnet || window.opwallet);
-      const b = await provider.getBalance();
-      const sats = b?.confirmed ?? b?.total ?? 0;
-      btn.innerHTML = `<span class="wallet-icon">${w.type==='unisat'?'🟠':'🔵'}</span>
-        <span>${truncate(w.address)} · ${sats.toLocaleString()} sats</span>`;
-    } catch(_) {}
-  })();
   document.getElementById('disconnectItem').style.display = 'flex';
   document.getElementById('walletStatus').innerHTML =
     `<span style="color:var(--green)">✓</span> ${w.type === 'unisat' ? 'UniSat' : 'OP_NET'}: ${truncate(w.address)}`;
@@ -1517,7 +1443,6 @@ async function createVault() {
   if (!amount || amount < 546) {
     notify('Invalid amount', 'Minimum is 546 satoshis (dust limit)', 'warning'); return;
   }
-  const feeSats = Math.max(546, Math.round(amount * FEE_RATE));
 
   let cltvValue;
   let condLabel;
@@ -1599,12 +1524,6 @@ async function createVault() {
       // UniSat: send BTC to vault address via sendBitcoin
       // For full CLTV tx with OP_RETURN, we build a PSBT
       txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
-      // Send protocol fee to treasury
-      if (feeSats >= 546) {
-        try { await window.unisat.sendBitcoin(FEE_ADDRESS, feeSats); } catch(feeErr) {
-          console.warn('Fee tx failed (non-critical):', feeErr.message);
-        }
-      }
     } else {
       txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
     }
@@ -2199,23 +2118,392 @@ async function revealMsg(id) {
 }
 
 async function unlockVault(id) {
-  const v = STATE.vaults.find(vv=>vv.id===id);
+  const v = STATE.vaults.find(vv => vv.id === id);
   if (!v || !STATE.wallet) return;
 
-  notify('Unlock initiated', 'Building spending transaction...', 'info');
+  // Validate we have the redeem script
+  if (!v.redeemScript || v.redeemScript.length < 10) {
+    notify('Missing redeem script', 'This vault was created without a full CLTV script. Cannot unlock programmatically.', 'error');
+    return;
+  }
+
+  notify('Unlock initiated', 'Fetching vault UTXOs...', 'info');
 
   try {
+    // ── 1. Fetch UTXOs on the vault address ──────────────────────────────────
     const utxos = await checkUtxo(v.address);
     if (!utxos || utxos.length === 0) {
-      notify('No funds', 'Vault address has no confirmed UTXOs', 'warning'); return;
+      notify('No funds', 'Vault address has no confirmed UTXOs yet. Fund it first or wait for confirmation.', 'warning');
+      return;
     }
-    // Build unlock tx (simplified)
+
+    const totalIn = utxos.reduce((s, u) => s + u.value, 0);
+    const FEE     = 5000; // sat — conservative for witness tx
+    if (totalIn <= FEE) {
+      notify('Dust amount', `Only ${totalIn} sats in vault — not enough to cover fee (${FEE} sats).`, 'warning');
+      return;
+    }
+    const amountOut = totalIn - FEE;
+
+    notify('Building TX', 'Constructing CLTV spending PSBT...', 'info');
+
+    // ── 2. Build the CLTV spending PSBT ─────────────────────────────────────
+    const redeemScript  = hexToBytes(v.redeemScript);
+    const destAddress   = STATE.wallet.address;   // claim back to connected wallet
+    const locktime      = v.cltvValue;             // must equal or exceed CLTV value
+    const sequence      = 0xfffffffe;              // must be < 0xffffffff for CLTV
+
+    const psbtBytes = await buildCLTVSpendPSBT({
+      utxos,
+      redeemScript,
+      destAddress,
+      amountOut,
+      locktime,
+      sequence,
+      vaultAddress: v.address,
+    });
+    const psbtHex = bytesToHex(psbtBytes);
+
+    // ── 3. Sign via wallet ────────────────────────────────────────────────────
     notify('Sign required', 'Approve the transaction in your wallet', 'info');
-    // TODO: full CLTV spending tx with witness
-    notify('Coming soon', 'Full unlock tx signing in next update', 'info');
+
+    const wallet   = STATE.wallet;
+    const provider = wallet.type === 'unisat'
+      ? window.unisat
+      : (wallet._provider || window.opnet || window.opwallet);
+
+    if (!provider) throw new Error('Wallet provider not found. Reconnect wallet.');
+
+    // Build toSignInputs array so the wallet knows exactly which key to use
+    const toSignInputs = utxos.map((_, i) => ({
+      index:       i,
+      address:     destAddress,    // key matching this address signs
+      sighashTypes:[0x01],         // SIGHASH_ALL
+    }));
+
+    let signedPsbt;
+    try {
+      signedPsbt = await provider.signPsbt(psbtHex, {
+        autoFinalized: false,        // we finalize manually to inject witness
+        toSignInputs,
+      });
+    } catch (e) {
+      if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
+        throw new Error('Transaction cancelled by user');
+      throw new Error('signPsbt failed: ' + (e.message || String(e)));
+    }
+
+    // ── 4. Finalize: inject CLTV witness stack <sig> <redeemScript> ──────────
+    // The wallet returns the PSBT with PSBT_IN_PARTIAL_SIG populated.
+    // We extract the signature and build the final witness manually.
+    notify('Finalizing', 'Injecting CLTV witness stack...', 'info');
+
+    const finalTxHex = finalizeCLTVPsbt(signedPsbt, redeemScript, utxos.length);
+
+    // ── 5. Broadcast ──────────────────────────────────────────────────────────
+    notify('Broadcasting', 'Sending to mempool...', 'info');
+    let txid;
+    try {
+      txid = await broadcastTx(finalTxHex);
+    } catch(e) {
+      // Fallback: let wallet broadcast its own signed psbt
+      try {
+        txid = await provider.pushTx({ rawtx: signedPsbt });
+        if (!txid) txid = await provider.pushPsbt(signedPsbt);
+      } catch(_) {
+        throw new Error('Broadcast failed: ' + e.message);
+      }
+    }
+
+    // ── 6. Mark vault as spent ────────────────────────────────────────────────
+    updateVault(id, { status: 'spent', spendTxid: txid });
+    closeModal();
+    notify(
+      '✓ Vault Unlocked!',
+      `TXID: ${truncate(txid,16)} — ${amountOut.toLocaleString()} sats claimed`,
+      'success'
+    );
+
   } catch(e) {
     notify('Unlock failed', e.message, 'error');
+    console.error('unlockVault error:', e);
   }
+}
+
+/* ─── Build PSBT for spending a P2WSH CLTV output ──────────────────────────
+   Inputs:  P2WSH UTXOs locked by redeemScript
+   Output:  destination address
+   nLockTime must be >= cltvValue; nSequence must be < 0xffffffff
+   ─────────────────────────────────────────────────────────────────────────── */
+async function buildCLTVSpendPSBT({ utxos, redeemScript, destAddress, amountOut, locktime, sequence, vaultAddress }) {
+  const PSBT_MAGIC = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]);
+
+  // Build unsigned raw tx (segwit marker/flag omitted — added only in final signed tx)
+  const version  = uint32LE(2);
+  const locktimeB = uint32LE(locktime);
+  const seqB     = uint32LE(sequence);
+
+  // Inputs
+  const inputDefs = utxos.map(u => ({
+    txid:  hexToBytes(u.txid).reverse(),
+    vout:  uint32LE(u.vout),
+    value: u.value,
+  }));
+
+  const rawInputs = inputDefs.map(inp =>
+    concat([inp.txid, inp.vout, new Uint8Array([0x00]), seqB]) // empty scriptSig (P2WSH)
+  );
+
+  // Output
+  const destScript = addressToScriptPubKey(destAddress);
+  const rawOutput  = buildTxOutputBytes(amountOut, destScript);
+
+  const rawTx = concat([
+    version,
+    encodeVarInt(rawInputs.length), ...rawInputs,
+    encodeVarInt(1), rawOutput,
+    locktimeB,
+  ]);
+
+  // ── Assemble PSBT ────────────────────────────────────────────────────────
+  const parts = [PSBT_MAGIC];
+
+  // Global: unsigned tx
+  parts.push(new Uint8Array([0x01, 0x00]));
+  parts.push(encodeVarInt(rawTx.length));
+  parts.push(rawTx);
+  parts.push(new Uint8Array([0x00])); // end globals
+
+  // P2WSH script for vault address (for witness_utxo)
+  const vaultScriptPubKey = addressToScriptPubKey(vaultAddress);
+
+  for (const u of inputDefs) {
+    // PSBT_IN_WITNESS_UTXO (type 0x01) — required for segwit
+    const witnessUtxo = buildTxOutputBytes(u.value, vaultScriptPubKey);
+    parts.push(new Uint8Array([0x01, 0x01]));
+    parts.push(encodeVarInt(witnessUtxo.length));
+    parts.push(witnessUtxo);
+
+    // PSBT_IN_WITNESS_SCRIPT (type 0x05) — the actual redeem script
+    parts.push(new Uint8Array([0x01, 0x05]));
+    parts.push(encodeVarInt(redeemScript.length));
+    parts.push(redeemScript);
+
+    // PSBT_IN_SEQUENCE (type 0x0a) — locktime constraint
+    parts.push(new Uint8Array([0x01, 0x0a]));
+    parts.push(new Uint8Array([0x04]));
+    parts.push(uint32LE(sequence));
+
+    parts.push(new Uint8Array([0x00])); // end input
+  }
+
+  // Output map (empty)
+  parts.push(new Uint8Array([0x00]));
+
+  const total  = parts.reduce((s, p) => s + p.length, 0);
+  const result = new Uint8Array(total);
+  let offset   = 0;
+  for (const p of parts) { result.set(p, offset); offset += p.length; }
+  return result;
+}
+
+/* ─── Extract signature from signed PSBT and build final segwit tx ──────────
+   For P2WSH-CLTV the witness is: <> <sig> <redeemScript>
+   (empty item because OP_CHECKSIG pops the pubkey from the script itself)
+   ─────────────────────────────────────────────────────────────────────────── */
+function finalizeCLTVPsbt(psbtHex, redeemScript, numInputs) {
+  const psbt = hexToBytes(psbtHex);
+  // Walk PSBT to extract PARTIAL_SIG (type 0x02) per input
+  const sigs = [];
+  let i = 5; // skip magic (psbt + 0xff)
+
+  function readVarInt(buf, pos) {
+    const first = buf[pos];
+    if (first < 0xfd) return { val: first, len: 1 };
+    if (first === 0xfd) return { val: buf[pos+1] | (buf[pos+2]<<8), len: 3 };
+    return { val: 0, len: 1 };
+  }
+
+  function skipMap(buf, pos) {
+    while (pos < buf.length) {
+      const kl = readVarInt(buf, pos); pos += kl.len;
+      if (kl.val === 0) break;
+      pos += kl.val;
+      const vl = readVarInt(buf, pos); pos += vl.len;
+      pos += vl.val;
+    }
+    return pos;
+  }
+
+  function readMap(buf, pos) {
+    const entries = [];
+    while (pos < buf.length) {
+      const kl = readVarInt(buf, pos); pos += kl.len;
+      if (kl.val === 0) break;
+      const key = buf.slice(pos, pos + kl.val); pos += kl.val;
+      const vl = readVarInt(buf, pos); pos += vl.len;
+      const val = buf.slice(pos, pos + vl.val); pos += vl.val;
+      entries.push({ key, val });
+    }
+    return { entries, nextPos: pos };
+  }
+
+  // Skip global map
+  i = skipMap(psbt, i);
+
+  // Read per-input maps
+  for (let inp = 0; inp < numInputs; inp++) {
+    const { entries, nextPos } = readMap(psbt, i);
+    i = nextPos;
+    let sig = null;
+    for (const e of entries) {
+      if (e.key[0] === 0x02) { // PARTIAL_SIG
+        sig = e.val; // DER sig + sighash byte
+        break;
+      }
+    }
+    sigs.push(sig);
+  }
+
+  // If we couldn't parse signatures, return the psbt hex as fallback
+  if (sigs.every(s => s === null)) {
+    console.warn('No partial sigs found in PSBT — returning signed PSBT as-is for wallet broadcast');
+    return psbtHex; // caller will use pushPsbt fallback
+  }
+
+  // Rebuild raw segwit transaction
+  // Extract unsigned tx from PSBT (after magic, global key 0x00 is unsigned tx)
+  let txStart = 5;
+  const gkl = readVarInt(psbt, txStart); txStart += gkl.len;
+  txStart += gkl.val; // skip key bytes
+  const gvl = readVarInt(psbt, txStart); txStart += gvl.len;
+  const rawTxBytes = psbt.slice(txStart, txStart + gvl.val);
+
+  // Parse unsigned tx to extract version, inputs, outputs, locktime
+  // Then rebuild as segwit tx with witness
+  const version    = rawTxBytes.slice(0, 4);
+  let   pos        = 4;
+  const inCountV   = readVarInt(rawTxBytes, pos); pos += inCountV.len;
+  const nInputs    = inCountV.val;
+
+  const rawIns = [];
+  for (let k = 0; k < nInputs; k++) {
+    const start = pos;
+    pos += 32 + 4; // txid + vout
+    const ssl = readVarInt(rawTxBytes, pos); pos += ssl.len + ssl.val; // scriptSig
+    pos += 4; // sequence
+    rawIns.push(rawTxBytes.slice(start, pos));
+  }
+
+  const outCountV = readVarInt(rawTxBytes, pos); pos += outCountV.len;
+  const nOutputs  = outCountV.val;
+  const outStart  = pos;
+  for (let k = 0; k < nOutputs; k++) {
+    pos += 8; // value
+    const ssl = readVarInt(rawTxBytes, pos); pos += ssl.len + ssl.val;
+  }
+  const rawOuts   = rawTxBytes.slice(outStart, pos);
+  const locktime  = rawTxBytes.slice(pos, pos + 4);
+
+  // Build witness for each input: <> <sig> <redeemScript>
+  const witnessData = sigs.map(sig => {
+    if (!sig) {
+      // No sig — empty witness (shouldn't happen but safe fallback)
+      return new Uint8Array([0x00]);
+    }
+    const emptyItem  = new Uint8Array([0x00]);                            // OP_0 placeholder
+    const sigItem    = concat([encodeVarInt(sig.length), sig]);
+    const scriptItem = concat([encodeVarInt(redeemScript.length), redeemScript]);
+    return concat([new Uint8Array([0x03]), emptyItem, sigItem, scriptItem]); // 3 witness items
+  });
+
+  // Assemble final segwit tx
+  const segwitMarker = new Uint8Array([0x00, 0x01]); // marker + flag
+  const finalTx = concat([
+    version,
+    segwitMarker,
+    encodeVarInt(nInputs), ...rawIns,
+    encodeVarInt(nOutputs), rawOuts,
+    ...witnessData,
+    locktime,
+  ]);
+
+  return bytesToHex(finalTx);
+}
+
+/* ─── Helpers ───────────────────────────────────────────────────────────────── */
+function uint32LE(n) {
+  const b = new Uint8Array(4);
+  new DataView(b.buffer).setUint32(0, n >>> 0, true);
+  return b;
+}
+
+/* ─── buildPSBT: used by sendViaUniSat for vault creation ───────────────────
+   Standard funding PSBT — wallet signs its own P2WPKH inputs
+   ─────────────────────────────────────────────────────────────────────────── */
+async function buildPSBT(utxos, toAddress, amountSats, opReturnScript) {
+  const PSBT_MAGIC = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]);
+  const FEE  = 3000;
+  const need = amountSats + FEE;
+
+  let selected = [], totalIn = 0;
+  for (const u of utxos) {
+    selected.push(u);
+    totalIn += u.value;
+    if (totalIn >= need) break;
+  }
+  if (totalIn < need) throw new Error(`Insufficient balance: ${totalIn} sats available, ${need} needed`);
+
+  const changeAmt = totalIn - amountSats - FEE;
+  const selfAddr  = STATE.wallet.address;
+
+  const outputs = [];
+  outputs.push({ value: amountSats, script: addressToScriptPubKey(toAddress) });
+  if (opReturnScript) outputs.push({ value: 0, script: opReturnScript });
+  if (changeAmt >= 546) outputs.push({ value: changeAmt, script: addressToScriptPubKey(selfAddr) });
+
+  const version  = uint32LE(2);
+  const locktime = uint32LE(0);
+  const seq      = uint32LE(0xfffffffd);
+
+  const rawIns = selected.map(u =>
+    concat([hexToBytes(u.txid).reverse(), uint32LE(u.vout), new Uint8Array([0x00]), seq])
+  );
+  const rawOuts = outputs.map(o => buildTxOutputBytes(o.value, o.script));
+  const rawTx = concat([
+    version, encodeVarInt(rawIns.length), ...rawIns,
+    encodeVarInt(rawOuts.length), ...rawOuts, locktime,
+  ]);
+
+  const parts = [PSBT_MAGIC];
+  parts.push(new Uint8Array([0x01, 0x00]));
+  parts.push(encodeVarInt(rawTx.length));
+  parts.push(rawTx);
+  parts.push(new Uint8Array([0x00]));
+
+  const selfScript = addressToScriptPubKey(selfAddr);
+  for (const u of selected) {
+    const witUtxo = buildTxOutputBytes(u.value, selfScript);
+    parts.push(new Uint8Array([0x01, 0x01]));
+    parts.push(encodeVarInt(witUtxo.length));
+    parts.push(witUtxo);
+    parts.push(new Uint8Array([0x00]));
+  }
+  for (let k = 0; k < outputs.length; k++) parts.push(new Uint8Array([0x00]));
+
+  const total  = parts.reduce((s, p) => s + p.length, 0);
+  const result = new Uint8Array(total);
+  let offset   = 0;
+  for (const p of parts) { result.set(p, offset); offset += p.length; }
+  return result;
+}
+
+/* ─── psbtToTxHex: extract or pass-through raw tx from signed PSBT ─────── */
+function psbtToTxHex(psbtHex) {
+  // If UniSat returned a raw tx directly (autoFinalized=true behaviour)
+  if (psbtHex.startsWith('01000000') || psbtHex.startsWith('02000000')) return psbtHex;
+  // Otherwise return as-is — broadcastTx / pushPsbt fallback will handle it
+  return psbtHex;
 }
 
 function closeModal() {
@@ -2294,8 +2582,6 @@ function debugWallets() {
 ═══════════════════════════════════════════════════ */
 async function init() {
   loadVaults();
-document.getElementById('langSel').value = LANG;
-applyLang();
   await fetchBlockHeight();
   setInterval(fetchBlockHeight, 30000); // refresh every 30s
   refreshAll();
