@@ -1493,34 +1493,24 @@ async function createVault() {
     }
 
     // 3. Build CLTV script
-    let pubkey = STATE.wallet.pubkey || '';
-
-    // Если pubkey ещё не получен — запрашиваем с таймаутом
-    if (!pubkey || pubkey.length < 66) {
-      try {
-        const prov = STATE.wallet._provider || window.opnet || window.opwallet || window.unisat;
-        if (prov?.getPublicKey) {
-          pubkey = await Promise.race([
-            prov.getPublicKey(),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 5000)),
-          ]);
-          if (pubkey) STATE.wallet.pubkey = pubkey;
-        }
-      } catch(_) {}
-    }
-
-    const hasFullPubkey = pubkey && pubkey.length >= 66;
-    if (!hasFullPubkey) {
-      throw new Error(
-        'Wallet did not provide a compressed public key (33 bytes). ' +
-        'Try reconnecting your wallet or updating the extension.'
-      );
+    // For OP_NET (no pubkey available), we store script params but skip PSBT building
+    const pubkey = STATE.wallet.pubkey || '';
+    const hasFullPubkey = pubkey && pubkey.length >= 66; // 33 bytes compressed = 66 hex chars
+    if (!hasFullPubkey && STATE.wallet.type === 'unisat') {
+      throw new Error('Wallet did not provide public key. Please update UniSat extension.');
     }
 
     let redeemScript, redeemHex, vaultAddress, opReturnScript;
-    redeemScript = buildCLTVRedeemScript(pubkey, cltvValue);
-    redeemHex    = bytesToHex(redeemScript);
-    vaultAddress = await buildP2WSHAddress(redeemScript);
+    if (hasFullPubkey) {
+      redeemScript = buildCLTVRedeemScript(pubkey, cltvValue);
+      redeemHex = bytesToHex(redeemScript);
+      vaultAddress = await buildP2WSHAddress(redeemScript);
+    } else {
+      // OP_NET: no compressed pubkey available — vault stored locally, BTC sent to own address
+      redeemHex = '';
+      vaultAddress = STATE.wallet.address; // funds stay in wallet for now
+      notify('Note', 'OP_NET does not expose compressed pubkey — vault saved locally without P2WSH address', 'warning');
+    }
     opReturnScript = await buildOPReturnScript(vaultId, msgHash);
 
     setStep('s1', 'done');
@@ -1528,11 +1518,13 @@ async function createVault() {
 
     // 4. Sign transaction via wallet
     let txid;
+    let rawTx;
 
     if (STATE.wallet.type === 'unisat') {
+      // UniSat: send BTC to vault address via sendBitcoin
+      // For full CLTV tx with OP_RETURN, we build a PSBT
       txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
     } else {
-      notify('Открой OP_WALLET', 'Должен появиться popup с подтверждением транзакции', 'info');
       txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
     }
 
@@ -1645,49 +1637,160 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
   if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
-  const withTimeout = (promise, ms, label) => Promise.race([
-    promise,
-    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms/1000}s`)), ms)),
-  ]);
-
-  // sendBitcoin — стандартный метод (как у UniSat)
-  if (typeof provider.sendBitcoin === 'function') {
-    try {
-      const txid = await withTimeout(
-        provider.sendBitcoin(toAddress, amountSats),
-        60000, 'sendBitcoin'
-      );
-      if (txid) return txid;
-    } catch(e) {
-      if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
-        throw new Error('Transaction cancelled by user');
-      if (/timed out/i.test(e.message))
-        throw new Error('OP_WALLET did not respond. Check the extension popup and try again.');
-      console.warn('sendBitcoin failed:', e.message);
-    }
+  // 1. Get UTXOs directly from OP_WALLET (their own node, no external API)
+  let utxos;
+  try {
+    utxos = await provider.getBitcoinUtxos();
+    console.log('OP_WALLET UTXOs:', utxos);
+  } catch(e) {
+    throw new Error('Failed to get UTXOs from OP_WALLET: ' + e.message);
+  }
+  if (!utxos || utxos.length === 0) {
+    throw new Error('No UTXOs found. Get tBTC at: https://faucet.opnet.org/');
   }
 
-  // transfer — альтернативный метод
-  if (typeof provider.transfer === 'function') {
-    try {
-      const txid = await withTimeout(
-        provider.transfer({ to: toAddress, amount: amountSats }),
-        60000, 'transfer'
-      );
-      if (txid) return typeof txid === 'string' ? txid : (txid?.txid || txid?.hash);
-    } catch(e) {
-      if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
-        throw new Error('Transaction cancelled by user');
-      if (/timed out/i.test(e.message))
-        throw new Error('OP_WALLET did not respond. Check the extension popup and try again.');
-      console.warn('transfer failed:', e.message);
-    }
+  // 2. Select UTXOs to cover amount + fee
+  const FEE = 3000;
+  const need = amountSats + FEE;
+  let selected = [], total = 0;
+  for (const u of utxos) {
+    selected.push(u);
+    total += parseInt(u.value);
+    if (total >= need) break;
+  }
+  if (total < need) {
+    throw new Error(
+      `Insufficient balance. Have: ${total.toLocaleString()} sats, ` +
+      `need: ${need.toLocaleString()} sats.`
+    );
   }
 
-  throw new Error(
-    'OP_NET wallet does not support sending BTC directly. ' +
-    'Please send ' + amountSats + ' sats manually to vault address: ' + toAddress
-  );
+  const changeAmount = total - amountSats - FEE;
+  const selfAddress = STATE.wallet.address;
+
+  // 3. Get pubkey for signing
+  let pubkeyHex = STATE.wallet.pubkey || '';
+  if (!pubkeyHex) {
+    try { pubkeyHex = await provider.getPublicKey(); } catch(_) {}
+  }
+  console.log('pubkey:', pubkeyHex, 'length:', pubkeyHex.length);
+
+  // 4. Build PSBT using OP_WALLET's Taproot address format
+  // OP_WALLET uses "opt1p..." prefix internally but signs standard Taproot
+  // The scriptPubKey hex from UTXO is the ground truth
+  const psbtBytes = await buildOPNetPSBT(selected, toAddress, amountSats, changeAmount, selfAddress, pubkeyHex);
+  const psbtHex = bytesToHex(psbtBytes);
+  console.log('PSBT hex length:', psbtHex.length);
+
+  // 5. Sign via OP_WALLET
+  notify('Approve in OP_WALLET...', 'Check the OP_WALLET popup', 'info');
+  await new Promise(r => setTimeout(r, 200));
+
+  let signedPsbt;
+  try {
+    // For Taproot (opt1p/tb1p): let OP_WALLET auto-detect signing key
+    // Do NOT pass toSignInputs — wallet knows which key matches its own UTXOs
+    signedPsbt = await Promise.race([
+      provider.signPsbt(psbtHex, { autoFinalized: true }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('OP_WALLET signPsbt timed out after 30s')), 30000)
+      )
+    ]);
+    console.log('signPsbt result:', typeof signedPsbt, signedPsbt?.length);
+  } catch(e) {
+    console.error('signPsbt error:', e);
+    if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || '')) {
+      throw new Error('Transaction cancelled by user');
+    }
+    throw new Error('signPsbt failed: ' + (e.message || String(e)));
+  }
+
+  // 6. Broadcast via OP_WALLET's pushTx or pushPsbt
+  notify('Broadcasting...', 'Sending to OPNet network', 'info');
+  try {
+    // Try pushTx first (expects raw tx hex), then pushPsbt (expects psbt hex)
+    let txid;
+    try {
+      txid = await provider.pushTx({ rawtx: signedPsbt });
+    } catch(_) {
+      txid = await provider.pushPsbt(signedPsbt);
+    }
+    console.log('broadcast result:', txid);
+    const id = typeof txid === 'string' ? txid : txid?.txid || txid?.hash || null;
+    return id;
+  } catch(e) {
+    throw new Error('Broadcast failed: ' + (e.message || String(e)));
+  }
+}
+
+async function buildOPNetPSBT(utxos, toAddress, amountSats, changeAmount, changeAddress, pubkeyHex) {
+  // PSBT v0 structure for Taproot inputs
+  // Magic: "psbt" + 0xff separator
+  const PSBT_MAGIC = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]);
+
+  // Build unsigned transaction first
+  const inputs = utxos.map(u => ({
+    txid: u.transactionId,
+    vout: u.outputIndex,
+    scriptPubKeyHex: u.scriptPubKey.hex,
+    value: parseInt(u.value),
+    nonWitnessUtxoBase64: u.nonWitnessUtxoBase64,
+  }));
+
+  // Build outputs
+  const outputs = [];
+
+  // Output 0: to vault address (toAddress)
+  const toScript = addressToScriptPubKey(toAddress);
+  outputs.push({ value: amountSats, scriptHex: bytesToHex(toScript) });
+
+  // Output 1: change back to self
+  if (changeAmount >= 546) {
+    const changeScript = addressToScriptPubKey(changeAddress);
+    outputs.push({ value: changeAmount, scriptHex: bytesToHex(changeScript) });
+  }
+
+  // Build raw unsigned tx bytes
+  const rawTx = buildRawTx(inputs, outputs);
+
+  // Assemble PSBT
+  const parts = [PSBT_MAGIC];
+
+  // Global: PSBT_GLOBAL_UNSIGNED_TX (key=0x01 0x00)
+  parts.push(new Uint8Array([0x01, 0x00]));
+  parts.push(encodeVarInt(rawTx.length));
+  parts.push(rawTx);
+  parts.push(new Uint8Array([0x00])); // end globals
+
+  // Per-input maps
+  for (const inp of inputs) {
+    // PSBT_IN_NON_WITNESS_UTXO (key type 0x00) — full prev tx
+    if (inp.nonWitnessUtxoBase64) {
+      const prevTxBytes = base64ToBytes(inp.nonWitnessUtxoBase64);
+      parts.push(new Uint8Array([0x01, 0x00])); // key length 1, key type 0x00
+      parts.push(encodeVarInt(prevTxBytes.length));
+      parts.push(prevTxBytes);
+    }
+    // PSBT_IN_WITNESS_UTXO (key type 0x01) — for segwit/taproot
+    const witnessOut = buildTxOutputBytes(inp.value, hexToBytes(inp.scriptPubKeyHex));
+    parts.push(new Uint8Array([0x01, 0x01]));
+    parts.push(encodeVarInt(witnessOut.length));
+    parts.push(witnessOut);
+
+    parts.push(new Uint8Array([0x00])); // end this input
+  }
+
+  // Per-output maps (empty for each output)
+  for (let i = 0; i < outputs.length; i++) {
+    parts.push(new Uint8Array([0x00]));
+  }
+
+  // Concatenate all parts
+  const total = parts.reduce((s, p) => s + p.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) { result.set(p, offset); offset += p.length; }
+  return result;
 }
 
 function buildRawTx(inputs, outputs) {
