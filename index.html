@@ -2138,14 +2138,47 @@ async function unlockVault(id) {
     }
 
     const totalIn = utxos.reduce((s, u) => s + u.value, 0);
-    const FEE     = 5000; // sat — conservative for witness tx
-    if (totalIn <= FEE) {
-      notify('Dust amount', `Only ${totalIn} sats in vault — not enough to cover fee (${FEE} sats).`, 'warning');
+
+    // ── Динамический расчёт fee ──────────────────────────────────────────────
+    // P2WSH CLTV spending tx vsize (N inputs → 1 P2WPKH output):
+    //   non-witness: 10 header + 41*N inputs + 31 output
+    //   witness per input: ~1(items) + 1(empty) + 73(sig) + 1+redeemScriptLen
+    //   vsize = ceil((non_witness*4 + witness) / 4)
+    const redeemScriptLen = hexToBytes(v.redeemScript).length;
+    const witnessPerInput = 1 + 1 + 73 + 1 + redeemScriptLen;
+    const nonWitnessBytes = 10 + 41 * utxos.length + 31;
+    const witnessBytes    = 2 + witnessPerInput * utxos.length; // 2 = marker+flag
+    const vsize = Math.ceil((nonWitnessBytes * 4 + witnessBytes) / 4);
+
+    // Текущий feerate с mempool.space
+    let feeRate = 5; // fallback sat/vbyte
+    try {
+      const feeRes = await fetch(`${MEMPOOL_API}/v1/fees/recommended`);
+      if (feeRes.ok) {
+        const fees = await feeRes.json();
+        feeRate = Math.max(fees.halfHourFee || 5, 2);
+      }
+    } catch(_) {}
+
+    const FEE = Math.max(Math.ceil(vsize * feeRate), 500);
+    console.log(`Unlock fee: vsize=${vsize} vbytes × ${feeRate} sat/vb = ${FEE} sats`);
+
+    if (totalIn < FEE + 546) {
+      notify('Insufficient funds',
+        `Vault: ${totalIn} sats. Fee: ${FEE} sats (${vsize} vbytes @ ${feeRate} sat/vb). Need at least ${FEE + 546} sats.`,
+        'warning');
       return;
     }
     const amountOut = totalIn - FEE;
 
-    notify('Building TX', 'Constructing CLTV spending PSBT...', 'info');
+    if (amountOut < 546) {
+      notify('Output below dust',
+        `After fee (${FEE} sats) output = ${amountOut} sats < 546 dust limit. Add more BTC to vault.`,
+        'warning');
+      return;
+    }
+
+    notify('Building TX', `Fee: ${FEE} sats (${vsize} vbytes @ ${feeRate} sat/vb)`, 'info');
 
     // ── 2. Build the CLTV spending PSBT ─────────────────────────────────────
     const redeemScript  = hexToBytes(v.redeemScript);
@@ -2194,24 +2227,39 @@ async function unlockVault(id) {
     }
 
     // ── 4. Finalize: inject CLTV witness stack <sig> <redeemScript> ──────────
-    // The wallet returns the PSBT with PSBT_IN_PARTIAL_SIG populated.
-    // We extract the signature and build the final witness manually.
     notify('Finalizing', 'Injecting CLTV witness stack...', 'info');
 
     const finalTxHex = finalizeCLTVPsbt(signedPsbt, redeemScript, utxos.length);
+    console.log('Final tx hex (first 100):', finalTxHex.slice(0, 100));
 
     // ── 5. Broadcast ──────────────────────────────────────────────────────────
     notify('Broadcasting', 'Sending to mempool...', 'info');
     let txid;
-    try {
-      txid = await broadcastTx(finalTxHex);
-    } catch(e) {
-      // Fallback: let wallet broadcast its own signed psbt
+
+    // Try broadcasting finalized raw tx
+    if (finalTxHex && (finalTxHex.startsWith('01') || finalTxHex.startsWith('02'))) {
       try {
-        txid = await provider.pushTx({ rawtx: signedPsbt });
-        if (!txid) txid = await provider.pushPsbt(signedPsbt);
-      } catch(_) {
-        throw new Error('Broadcast failed: ' + e.message);
+        txid = await broadcastTx(finalTxHex);
+      } catch(broadcastErr) {
+        console.warn('Raw tx broadcast failed:', broadcastErr.message);
+        // Fallback: ask wallet to broadcast signed PSBT
+        try {
+          const result = await (provider.pushTx?.({ rawtx: signedPsbt })
+                            ?? provider.pushPsbt?.(signedPsbt));
+          txid = typeof result === 'string' ? result : result?.txid || result?.hash;
+        } catch(walletErr) {
+          throw new Error('Broadcast failed: ' + broadcastErr.message);
+        }
+      }
+    } else {
+      // finalizeCLTVPsbt returned psbt hex (couldn't parse sigs) — use wallet broadcast
+      try {
+        const result = await (provider.pushTx?.({ rawtx: signedPsbt })
+                          ?? provider.pushPsbt?.(signedPsbt));
+        txid = typeof result === 'string' ? result : result?.txid || result?.hash;
+        if (!txid) throw new Error('No txid returned from wallet broadcast');
+      } catch(e) {
+        throw new Error('Wallet broadcast failed: ' + e.message);
       }
     }
 
