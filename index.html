@@ -1642,190 +1642,35 @@ async function sendViaOPNET(toAddress, amountSats, opReturnScript) {
   const provider = STATE.wallet._provider || window.opnet || window.opwallet;
   if (!provider) throw new Error('OP_WALLET not found. Reconnect wallet.');
 
-  // ── 1. Получаем UTXOs ─────────────────────────────────────────────────────
-  let rawUtxos;
-  try {
-    rawUtxos = await provider.getBitcoinUtxos();
-    console.log('OP_WALLET UTXOs raw[0]:', JSON.stringify(rawUtxos?.[0]));
-  } catch(e) {
-    // Fallback через mempool.space
+  // OP_NET работает на своей сети (OPNet Testnet) и не принимает внешние PSBT.
+  // Правильный путь — sendBitcoin, как у UniSat.
+
+  if (typeof provider.sendBitcoin === 'function') {
     try {
-      const mu = await checkUtxo(STATE.wallet.address);
-      rawUtxos = mu.map(u => ({ txid: u.txid, vout: u.vout, value: String(u.value), scriptPubKey: { hex: '' } }));
-    } catch(_) {}
-    if (!rawUtxos?.length) throw new Error('Failed to get UTXOs: ' + e.message);
-  }
-  if (!rawUtxos?.length) throw new Error('No UTXOs. Get tBTC: https://faucet.opnet.org/');
-
-  // Нормализуем поля — OP_WALLET меняет формат между версиями
-  const normalized = rawUtxos.map(u => ({
-    txid:            u.txid || u.transactionId || u.hash || '',
-    vout:            typeof u.vout === 'number' ? u.vout : (u.outputIndex ?? 0),
-    value:           parseInt(u.value || u.satoshis || u.amount || 0),
-    scriptPubKeyHex: u.scriptPubKey?.hex || u.scriptpubkey || u.scriptPubKeyHex || '',
-  }));
-  console.log('UTXOs normalized:', normalized);
-
-  // ── 2. Динамический fee + подбор UTXOs ────────────────────────────────────
-  const nOut   = opReturnScript ? 3 : 2;
-  const vsize  = Math.ceil(57.5 * normalized.length + nOut * 31 + 10.5);
-  let feeRate  = 5;
-  try {
-    const r = await fetch(`${MEMPOOL_API}/v1/fees/recommended`);
-    if (r.ok) { const f = await r.json(); feeRate = Math.max(f.halfHourFee || 5, 2); }
-  } catch(_) {}
-  const FEE  = Math.max(Math.ceil(vsize * feeRate), 500);
-  const need = amountSats + FEE;
-
-  let selected = [], totalIn = 0;
-  for (const u of normalized) {
-    selected.push(u);
-    totalIn += u.value;
-    if (totalIn >= need) break;
-  }
-  if (totalIn < need) throw new Error(`Insufficient balance: ${totalIn} sats, need ${need} (fee ${FEE} sats)`);
-
-  const changeAmount = totalIn - amountSats - FEE;
-  const selfAddress  = STATE.wallet.address;
-
-  // ── 3. Если scriptPubKey пустой — подтягиваем из mempool ─────────────────
-  for (const u of selected) {
-    if (!u.scriptPubKeyHex && u.txid) {
-      try {
-        const res = await fetch(`${MEMPOOL_API}/tx/${u.txid}`);
-        if (res.ok) {
-          const tx = await res.json();
-          u.scriptPubKeyHex = tx.vout?.[u.vout]?.scriptpubkey || '';
-        }
-      } catch(_) {}
+      const txid = await provider.sendBitcoin(toAddress, amountSats);
+      if (txid) return txid;
+    } catch(e) {
+      if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
+        throw new Error('Transaction cancelled by user');
+      console.warn('sendBitcoin failed:', e.message);
     }
   }
 
-  // ── 4. Строим PSBT ────────────────────────────────────────────────────────
-  const psbtBytes = buildOPNetPSBT(selected, toAddress, amountSats, changeAmount, selfAddress, opReturnScript);
-  const psbtHex   = bytesToHex(psbtBytes);
-  console.log('PSBT len:', psbtHex.length, '| start:', psbtHex.slice(0, 40));
-
-  // ── 5. Подписываем ────────────────────────────────────────────────────────
-  notify('Approve in OP_WALLET...', `Fee: ${FEE} sats @ ${feeRate} sat/vb`, 'info');
-
-  let signedPsbt;
-  try {
-    signedPsbt = await Promise.race([
-      provider.signPsbt(psbtHex, { autoFinalized: true }),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('signPsbt timed out (30s)')), 30000)),
-    ]);
-    console.log('signedPsbt:', typeof signedPsbt, signedPsbt?.slice?.(0, 40));
-  } catch(e) {
-    if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
-      throw new Error('Transaction cancelled by user');
-    throw new Error('signPsbt failed: ' + (e.message || String(e)));
-  }
-
-  // ── 6. Бродкастим ─────────────────────────────────────────────────────────
-  notify('Broadcasting...', 'Sending to network', 'info');
-
-  // Если вернулся txid напрямую (64 hex символа)
-  if (typeof signedPsbt === 'string' && /^[0-9a-f]{64}$/i.test(signedPsbt)) return signedPsbt;
-
-  let txid = null;
-  // Пробуем все варианты broadcast
-  for (const call of [
-    () => provider.pushTx?.(signedPsbt),
-    () => provider.pushTx?.({ rawtx: signedPsbt }),
-    () => provider.pushPsbt?.(signedPsbt),
-    () => broadcastTx(signedPsbt),
-  ]) {
+  if (typeof provider.transfer === 'function') {
     try {
-      const r = await call();
-      if (r) { txid = typeof r === 'string' ? r : (r?.txid || r?.hash); break; }
-    } catch(_) {}
-  }
-  if (!txid) throw new Error('All broadcast methods failed. Check DevTools console.');
-  return txid;
-}
-
-function buildOPNetPSBT(utxos, toAddress, amountSats, changeAmount, changeAddress, opReturnScript) {
-  const PSBT_MAGIC = new Uint8Array([0x70, 0x73, 0x62, 0x74, 0xff]);
-
-  // Outputs
-  const outputs = [];
-  outputs.push({ value: amountSats,   scriptHex: bytesToHex(addressToScriptPubKey(toAddress)) });
-  if (changeAmount >= 546)
-    outputs.push({ value: changeAmount, scriptHex: bytesToHex(addressToScriptPubKey(changeAddress)) });
-  if (opReturnScript)
-    outputs.push({ value: 0,           scriptHex: bytesToHex(opReturnScript) });
-
-  // Raw unsigned tx
-  const version  = new Uint8Array([0x02, 0x00, 0x00, 0x00]);
-  const locktime = new Uint8Array([0x00, 0x00, 0x00, 0x00]);
-  const seq      = new Uint8Array([0xfd, 0xff, 0xff, 0xff]); // RBF
-
-  const rawIns = utxos.map(u => {
-    const txid = hexToBytes(u.txid).reverse();
-    const vout = new Uint8Array(4);
-    new DataView(vout.buffer).setUint32(0, u.vout, true);
-    return concat([txid, vout, new Uint8Array([0x00]), seq]);
-  });
-
-  const rawOuts = outputs.map(o => buildTxOutputBytes(o.value, hexToBytes(o.scriptHex)));
-
-  const rawTx = concat([
-    version,
-    encodeVarInt(rawIns.length), ...rawIns,
-    encodeVarInt(rawOuts.length), ...rawOuts,
-    locktime,
-  ]);
-
-  // PSBT assembly
-  const parts = [PSBT_MAGIC];
-  parts.push(new Uint8Array([0x01, 0x00]));
-  parts.push(encodeVarInt(rawTx.length));
-  parts.push(rawTx);
-  parts.push(new Uint8Array([0x00])); // end globals
-
-  // x-only pubkey (32 байта) для Taproot — сжатый pubkey без prefix-байта 02/03
-  const pubkeyHex_   = STATE.wallet?.pubkey || '';
-  const xOnlyPubkey  = pubkeyHex_.length >= 66 ? hexToBytes(pubkeyHex_).slice(1) : null;
-
-  for (const u of utxos) {
-    if (u.scriptPubKeyHex) {
-      // PSBT_IN_WITNESS_UTXO (0x01) — обязателен для Taproot/SegWit
-      const witOut = buildTxOutputBytes(u.value, hexToBytes(u.scriptPubKeyHex));
-      parts.push(new Uint8Array([0x01, 0x01]));
-      parts.push(encodeVarInt(witOut.length));
-      parts.push(witOut);
+      const txid = await provider.transfer({ to: toAddress, amount: amountSats });
+      if (txid) return typeof txid === 'string' ? txid : (txid?.txid || txid?.hash);
+    } catch(e) {
+      if (e.code === 4001 || /reject|cancel|denied/i.test(e.message || ''))
+        throw new Error('Transaction cancelled by user');
+      console.warn('transfer failed:', e.message);
     }
-
-    // PSBT_IN_TAP_INTERNAL_KEY (0x15) — x-only pubkey 32 байта
-    // Без этого поля OP_WALLET не может сматчить Taproot ключ с инпутом
-    if (xOnlyPubkey) {
-      parts.push(new Uint8Array([0x01, 0x15]));
-      parts.push(new Uint8Array([xOnlyPubkey.length]));
-      parts.push(xOnlyPubkey);
-    }
-
-    // PSBT_IN_TAP_BIP32_DERIVATION (0x16)
-    // key = len(1 + 32) + 0x16 + x-only-pubkey, value = fingerprint(4) + path(0)
-    if (xOnlyPubkey) {
-      const tapDerKeyLen = 1 + xOnlyPubkey.length; // type byte + 32 bytes
-      parts.push(new Uint8Array([tapDerKeyLen, 0x16, ...xOnlyPubkey]));
-      // value: num_leaf_hashes(varint=0) + fingerprint(4 bytes) + derivation_path(0 steps)
-      const tapDerVal = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00]); // 0 hashes + zero fingerprint
-      parts.push(new Uint8Array([tapDerVal.length]));
-      parts.push(tapDerVal);
-    }
-
-    parts.push(new Uint8Array([0x00])); // end input map
   }
 
-  for (let i = 0; i < outputs.length; i++) parts.push(new Uint8Array([0x00])); // output maps
-
-  const total  = parts.reduce((s, p) => s + p.length, 0);
-  const result = new Uint8Array(total);
-  let offset   = 0;
-  for (const p of parts) { result.set(p, offset); offset += p.length; }
-  return result;
+  throw new Error(
+    'OP_NET wallet does not support sending BTC. ' +
+    'Please send ' + amountSats + ' sats manually to: ' + toAddress
+  );
 }
 
 function buildRawTx(inputs, outputs) {
