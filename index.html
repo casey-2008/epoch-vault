@@ -747,13 +747,6 @@ select.field-input {
       <span>Block</span>
       <span id="liveBlock">—</span>
     </div>
-    <select id="langSel" onchange="setLang(this.value)" style="background:transparent;border:1px solid var(--border2);color:var(--muted2);font-family:'DM Mono',monospace;font-size:11px;padding:4px 8px;cursor:pointer;outline:none;">
-        <option value="en">EN</option>
-        <option value="ru">RU</option>
-        <option value="es">ES</option>
-        <option value="zh">中文</option>
-        <option value="de">DE</option>
-      </select>
     <span class="net-badge testnet">Testnet</span>
     <div style="position:relative;">
       <button class="btn-wallet" id="walletBtn" onclick="toggleWalletMenu()">
@@ -794,19 +787,19 @@ select.field-input {
   <div class="dash-grid" id="dashStats">
     <div class="dash-stat">
       <span class="dash-stat-num" id="stat-total">0</span>
-      <span class="dash-stat-label" id="stat-total-lbl">Total Vaults</span>
+      <span class="dash-stat-label">Total Vaults</span>
     </div>
     <div class="dash-stat">
       <span class="dash-stat-num" id="stat-active">0</span>
-      <span class="dash-stat-label" id="stat-active-lbl">Active</span>
+      <span class="dash-stat-label">Active</span>
     </div>
     <div class="dash-stat">
       <span class="dash-stat-num" id="stat-unlockable">0</span>
-      <span class="dash-stat-label" id="stat-unlock-lbl">Unlockable</span>
+      <span class="dash-stat-label">Unlockable</span>
     </div>
     <div class="dash-stat">
       <span class="dash-stat-num" id="stat-next">—</span>
-      <span class="dash-stat-label" id="stat-next-lbl">Next Unlock</span>
+      <span class="dash-stat-label">Next Unlock</span>
     </div>
   </div>
 
@@ -814,7 +807,7 @@ select.field-input {
   <div class="halving-card" id="halvingCard">
     <div class="halv-num" id="halvNum">5</div>
     <div class="halv-info">
-      <div class="halv-label" id="halvingLabel">Next Bitcoin Halving</div>
+      <div class="halv-label">Next Bitcoin Halving</div>
       <div class="halv-val" id="halvBlock">Block #1,050,000</div>
       <div class="halv-sub" id="halvBlocks">~162,588 blocks away · approx. 2026</div>
     </div>
@@ -823,7 +816,7 @@ select.field-input {
   <!-- Timeline -->
   <div class="timeline-wrap sec-head" style="display:block;">
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:0;padding-bottom:16px;border-bottom:1px solid var(--border);">
-      <span class="sec-title" id="timelineLabel">Unlock Timeline</span>
+      <span class="sec-title">Unlock Timeline</span>
     </div>
     <div class="timeline-bar">
       <div class="timeline-fill" id="timelineFill" style="width:0%"></div>
@@ -854,7 +847,7 @@ select.field-input {
 
   <!-- My vaults -->
   <div class="sec-head">
-    <span class="sec-title" id="myVaultsLabel">My Vaults</span>
+    <span class="sec-title">My Vaults</span>
     <span class="sec-badge" id="myVaultCount">0</span>
   </div>
   <div id="myVaultsList">
@@ -879,24 +872,24 @@ select.field-input {
     <!-- Form -->
     <div>
       <div class="sec-head">
-        <span class="sec-title" id="label-create-title">Create New Anchor</span>
+        <span class="sec-title">Create New Anchor</span>
       </div>
 
       <div class="form-panel">
 
         <!-- Message -->
         <div class="field">
-          <label class="field-label"><span id="label-message">Message</span></label>
+          <label class="field-label">Message</label>
           <textarea class="field-input" id="f-msg" placeholder="Write your message for the future..." oninput="updatePreview()"></textarea>
         </div>
 
         <!-- Condition type -->
         <div class="field">
-          <label class="field-label" id="label-condition">Unlock Condition</label>
+          <label class="field-label">Unlock Condition</label>
           <div class="cond-tabs">
-            <div class="cond-tab active" onclick="setCondTab('block')" id="tab-btn-block">Block Height</div>
-            <div class="cond-tab" onclick="setCondTab('date')" id="tab-btn-date">Date</div>
-            <div class="cond-tab" onclick="setCondTab('halving')" id="tab-btn-halving">Halving</div>
+            <div class="cond-tab active" onclick="setCondTab('block')">Block Height</div>
+            <div class="cond-tab" onclick="setCondTab('date')">Date</div>
+            <div class="cond-tab" onclick="setCondTab('halving')">Halving</div>
           </div>
           <div id="cond-block">
             <input type="number" class="field-input" id="f-block" placeholder="e.g. 900000" min="1" oninput="updatePreview()">
@@ -917,16 +910,16 @@ select.field-input {
 
         <!-- Amount -->
         <div class="field">
-          <label class="field-label" id="label-amount">Amount (satoshis)</label>
+          <label class="field-label">Amount (satoshis)</label>
           <input type="number" class="field-input" id="f-amount" placeholder="e.g. 10000 (= 0.0001 BTC)" min="546" oninput="updatePreview()">
-          <div style="font-size:10px;color:var(--muted);margin-top:6px;" id="label-amount-min">Minimum: 546 sats (dust limit)</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:6px;">Minimum: 546 sats (dust limit)</div>
         </div>
 
         <!-- Encrypt toggle -->
         <div class="encrypt-row" id="encryptRow" onclick="toggleEncrypt()">
           <div>
-            <div style="font-size:11px;color:var(--text);margin-bottom:3px;" id="label-encrypt">Encrypt Message</div>
-            <div style="font-size:10px;color:var(--muted);" id="label-encrypt-sub">AES-256-GCM · Key shown once · Never stored</div>
+            <div style="font-size:11px;color:var(--text);margin-bottom:3px;">Encrypt Message</div>
+            <div style="font-size:10px;color:var(--muted);">AES-256-GCM · Key shown once · Never stored</div>
           </div>
           <div class="toggle-switch" id="encryptSwitch"></div>
         </div>
@@ -943,10 +936,10 @@ select.field-input {
     <!-- Preview -->
     <div>
       <div class="sec-head">
-        <span class="sec-title" id="label-preview-title">Preview</span>
+        <span class="sec-title">Preview</span>
       </div>
       <div class="preview-panel">
-        <div class="preview-title" id="label-your-anchor">Your anchor will look like this</div>
+        <div class="preview-title">Your anchor will look like this</div>
         <div class="preview-vault">
           <div class="pv-id">ID: <span style="color:var(--gold)" id="prev-id">— — — — — — — —</span></div>
           <div class="pv-msg" id="prev-msg" style="color:var(--muted);font-style:italic;">Your message here...</div>
@@ -956,8 +949,8 @@ select.field-input {
 
         <!-- Wallet status -->
         <div style="margin-bottom:16px;">
-          <div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;"><span id="label-wallet-preview">Wallet</span></div>
-          <div id="walletStatus" style="font-size:11px;color:var(--muted);" id="label-not-connected">Not connected</div>
+          <div style="font-size:9px;letter-spacing:0.2em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;">Wallet</div>
+          <div id="walletStatus" style="font-size:11px;color:var(--muted);">Not connected</div>
         </div>
 
         <!-- Protocol info -->
@@ -978,14 +971,14 @@ select.field-input {
 <div class="page" id="page-archive">
 
   <div class="sec-head">
-    <span class="sec-title" id="archiveLabel">Anchor Archive</span>
+    <span class="sec-title">Anchor Archive</span>
     <span class="sec-badge" id="archiveCount">0</span>
   </div>
 
   <div class="archive-filters">
-    <button class="filter-btn active" onclick="filterArchive('all',this)" id="fbtn-all">All</button>
-    <button class="filter-btn" onclick="filterArchive('mine',this)" id="fbtn-mine">Mine</button>
-    <button class="filter-btn" onclick="filterArchive('pending',this)" id="fbtn-pending">Pending</button>
+    <button class="filter-btn active" onclick="filterArchive('all',this)">All</button>
+    <button class="filter-btn" onclick="filterArchive('mine',this)">Mine</button>
+    <button class="filter-btn" onclick="filterArchive('pending',this)">Pending</button>
     <button class="filter-btn" onclick="filterArchive('active',this)">Active</button>
     <button class="filter-btn" onclick="filterArchive('unlockable',this)">Unlockable</button>
     <button class="filter-btn" onclick="filterArchive('spent',this)">Spent</button>
@@ -994,13 +987,13 @@ select.field-input {
   <table class="archive-table">
     <thead>
       <tr>
-        <th id="th-id">Anchor ID</th>
-        <th><span id="th-message">Message</span></th>
-        <th id="th-condition">Condition</th>
-        <th id="th-status">Status</th>
-        <th id="th-type">Type</th>
-        <th id="th-network">Network</th>
-        <th id="th-created">Created</th>
+        <th>Anchor ID</th>
+        <th>Message</th>
+        <th>Condition</th>
+        <th>Status</th>
+        <th>Type</th>
+        <th>Network</th>
+        <th>Created</th>
       </tr>
     </thead>
     <tbody id="archiveBody">
@@ -1033,218 +1026,26 @@ select.field-input {
 <script>
 'use strict';
 
-/* ─── PROTOCOL FEE ─── */
-const FEE_RATE    = 0.03;
-const FEE_ADDRESS = 'tb1qy7wjmecnldfl7vhf3m0cxhmu68eey46hm0afvy'; // REPLACE with your address
-
-/* ─── i18n ─── */
-const LANGS = {
-  en: {
-    dashboard:'Dashboard', create:'Create Vault', archive:'Archive',
-    connect:'Connect Wallet', feeNote:'+ 3% protocol fee',
-    totalVaults:'Total Vaults', active:'Active', unlockable:'Unlockable', nextUnlock:'Next Unlock',
-    nextHalving:'Next Bitcoin Halving', unlockTimeline:'Unlock Timeline',
-    myVaults:'My Vaults',
-    connectTitle:'Connect your wallet to begin',
-    connectSub:'Connect UniSat or OP_NET wallet to create and manage your time-locked vaults.',
-    createNew:'Create New Anchor', preview:'Preview',
-    message:'Message', messagePh:'Write your message for the future...',
-    condition:'Unlock Condition', blockHeight:'Block Height', date:'Date', halving:'Halving',
-    amount:'Amount (satoshis)', amountMin:'Minimum: 546 sats (dust limit)',
-    encrypt:'Encrypt Message', encryptSub:'AES-256-GCM · Key shown once · Never stored',
-    createBtn:'Create Anchor →',
-    anchorArchive:'Anchor Archive',
-    all:'All', mine:'Mine', pending:'Pending', spent:'Spent',
-    thId:'Anchor ID', thMessage:'Message', thCondition:'Condition',
-    thStatus:'Status', thType:'Type', thNetwork:'Network', thCreated:'Created',
-    notConnected:'Not connected', walletLabel:'Wallet',
-    yourAnchor:'Your anchor will look like this',
-  },
-  ru: {
-    dashboard:'Дэшборд', create:'Создать якорь', archive:'Архив',
-    connect:'Подключить кошелёк', feeNote:'+ 3% комиссия',
-    totalVaults:'Всего якорей', active:'Активных', unlockable:'Готовы', nextUnlock:'Следующий',
-    nextHalving:'Следующий халвинг Bitcoin', unlockTimeline:'График разблокировок',
-    myVaults:'Мои якоря',
-    connectTitle:'Подключите кошелёк',
-    connectSub:'Подключите UniSat или OP_NET для создания якорей.',
-    createNew:'Создать новый якорь', preview:'Предпросмотр',
-    message:'Сообщение', messagePh:'Напишите сообщение для будущего...',
-    condition:'Условие разблокировки', blockHeight:'Блок', date:'Дата', halving:'Халвинг',
-    amount:'Сумма (сатоши)', amountMin:'Минимум: 546 сат (пылевой лимит)',
-    encrypt:'Зашифровать', encryptSub:'AES-256-GCM · Ключ показывается один раз',
-    createBtn:'Создать якорь →',
-    anchorArchive:'Архив якорей',
-    all:'Все', mine:'Мои', pending:'Ожидание', spent:'Использован',
-    thId:'ID якоря', thMessage:'Сообщение', thCondition:'Условие',
-    thStatus:'Статус', thType:'Тип', thNetwork:'Сеть', thCreated:'Создан',
-    notConnected:'Не подключён', walletLabel:'Кошелёк',
-    yourAnchor:'Так выглядит ваш якорь',
-  },
-  es: {
-    dashboard:'Panel', create:'Crear Ancla', archive:'Archivo',
-    connect:'Conectar', feeNote:'+ 3% comisión',
-    totalVaults:'Total Anclas', active:'Activas', unlockable:'Listas', nextUnlock:'Siguiente',
-    nextHalving:'Próximo Halving de Bitcoin', unlockTimeline:'Línea de tiempo',
-    myVaults:'Mis Anclas',
-    connectTitle:'Conecta tu billetera',
-    connectSub:'Conecta UniSat o OP_NET para gestionar tus anclas.',
-    createNew:'Crear Nueva Ancla', preview:'Vista previa',
-    message:'Mensaje', messagePh:'Escribe tu mensaje para el futuro...',
-    condition:'Condición de desbloqueo', blockHeight:'Bloque', date:'Fecha', halving:'Halving',
-    amount:'Cantidad (satoshis)', amountMin:'Mínimo: 546 sats',
-    encrypt:'Cifrar mensaje', encryptSub:'AES-256-GCM · Clave mostrada una vez',
-    createBtn:'Crear Ancla →',
-    anchorArchive:'Archivo de Anclas',
-    all:'Todo', mine:'Mías', pending:'Pendiente', spent:'Gastada',
-    thId:'ID Ancla', thMessage:'Mensaje', thCondition:'Condición',
-    thStatus:'Estado', thType:'Tipo', thNetwork:'Red', thCreated:'Creada',
-    notConnected:'No conectado', walletLabel:'Billetera',
-    yourAnchor:'Tu ancla se verá así',
-  },
-  zh: {
-    dashboard:'仪表板', create:'创建锚点', archive:'档案',
-    connect:'连接钱包', feeNote:'+ 3% 费用',
-    totalVaults:'总锚点数', active:'活跃', unlockable:'可解锁', nextUnlock:'下一个',
-    nextHalving:'下一次比特币减半', unlockTimeline:'解锁时间线',
-    myVaults:'我的锚点',
-    connectTitle:'连接您的钱包',
-    connectSub:'连接 UniSat 或 OP_NET 来管理您的锚点。',
-    createNew:'创建新锚点', preview:'预览',
-    message:'消息', messagePh:'为未来写下您的消息...',
-    condition:'解锁条件', blockHeight:'区块高度', date:'日期', halving:'减半',
-    amount:'金额（聪）', amountMin:'最低：546 聪',
-    encrypt:'加密消息', encryptSub:'AES-256-GCM · 密钥仅显示一次',
-    createBtn:'创建锚点 →',
-    anchorArchive:'锚点档案',
-    all:'全部', mine:'我的', pending:'待处理', spent:'已使用',
-    thId:'锚点 ID', thMessage:'消息', thCondition:'条件',
-    thStatus:'状态', thType:'类型', thNetwork:'网络', thCreated:'创建时间',
-    notConnected:'未连接', walletLabel:'钱包',
-    yourAnchor:'您的锚点将如此显示',
-  },
-  de: {
-    dashboard:'Dashboard', create:'Anker erstellen', archive:'Archiv',
-    connect:'Verbinden', feeNote:'+ 3% Gebühr',
-    totalVaults:'Gesamt Anker', active:'Aktiv', unlockable:'Entsperrbar', nextUnlock:'Nächster',
-    nextHalving:'Nächstes Bitcoin Halving', unlockTimeline:'Zeitplan',
-    myVaults:'Meine Anker',
-    connectTitle:'Wallet verbinden',
-    connectSub:'Verbinde UniSat oder OP_NET um Anker zu verwalten.',
-    createNew:'Neuen Anker erstellen', preview:'Vorschau',
-    message:'Nachricht', messagePh:'Schreibe deine Nachricht für die Zukunft...',
-    condition:'Entsperrbedingung', blockHeight:'Blockhöhe', date:'Datum', halving:'Halving',
-    amount:'Betrag (Satoshi)', amountMin:'Minimum: 546 Sats',
-    encrypt:'Verschlüsseln', encryptSub:'AES-256-GCM · Schlüssel einmalig angezeigt',
-    createBtn:'Anker erstellen →',
-    anchorArchive:'Anker-Archiv',
-    all:'Alle', mine:'Meine', pending:'Ausstehend', spent:'Ausgegeben',
-    thId:'Anker ID', thMessage:'Nachricht', thCondition:'Bedingung',
-    thStatus:'Status', thType:'Typ', thNetwork:'Netzwerk', thCreated:'Erstellt',
-    notConnected:'Nicht verbunden', walletLabel:'Wallet',
-    yourAnchor:'Ihr Anker wird so aussehen',
-  },
+/* ═══════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════ */
+const STATE = {
+  wallet: null,      // { type: 'unisat'|'opnet', address, pubkey }
+  vaults: [],        // loaded from localStorage
+  currentBlock: 0,
+  condTab: 'block',
+  encryptOn: false,
+  archiveFilter: 'all',
 };
-let LANG = localStorage.getItem('sa_lang') || 'en';
-function t(k) { return (LANGS[LANG] || LANGS['en'])[k] || k; }
-function setLang(l) {
-  LANG = l;
-  localStorage.setItem('sa_lang', l);
-  applyLang();
-}
-function applyLang() {
-  // Nav tabs
-  document.querySelectorAll('.nav-tab').forEach(el => {
-    const oc = el.getAttribute('onclick') || '';
-    if      (oc.includes("'dashboard'")) el.textContent = t('dashboard');
-    else if (oc.includes("'create'"))    el.textContent = t('create');
-    else if (oc.includes("'archive'"))   el.textContent = t('archive');
-  });
 
-  // Header wallet label (when not connected)
-  const lbl = document.getElementById('walletLabel');
-  if (lbl && !STATE.wallet) lbl.textContent = t('connect');
+const NETWORK = 'testnet';
+const MEMPOOL_API = 'https://mempool.space/testnet/api';
+const HALVING_BLOCKS = { 4:840000, 5:1050000, 6:1260000, 7:1470000, 8:1680000 };
+const PROTOCOL_MAGIC = 'SATANCHOR_V1';
 
-  // Fee note
-  const fn = document.getElementById('feeNote');
-  if (fn) fn.textContent = t('feeNote');
-
-  // Stats labels
-  const sl = {
-    'stat-total-lbl': 'totalVaults', 'stat-active-lbl': 'active',
-    'stat-unlock-lbl': 'unlockable', 'stat-next-lbl': 'nextUnlock',
-  };
-  Object.entries(sl).forEach(([id, key]) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t(key);
-  });
-
-  // Dashboard section titles
-  const hl = document.getElementById('halvingLabel');
-  if (hl) hl.textContent = t('nextHalving');
-  const tl = document.getElementById('timelineLabel');
-  if (tl) tl.textContent = t('unlockTimeline');
-  const mv = document.getElementById('myVaultsLabel');
-  if (mv) mv.textContent = t('myVaults');
-
-  // Create form labels
-  const labels = {
-    'label-message': 'message', 'label-condition': 'condition',
-    'label-amount': 'amount', 'label-amount-min': 'amountMin',
-    'label-encrypt': 'encrypt', 'label-encrypt-sub': 'encryptSub',
-    'label-create-title': 'createNew', 'label-preview-title': 'preview',
-    'label-wallet-preview': 'walletLabel', 'label-not-connected': 'notConnected',
-    'label-your-anchor': 'yourAnchor',
-  };
-  Object.entries(labels).forEach(([id, key]) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t(key);
-  });
-
-  // Message placeholder
-  const fmsg = document.getElementById('f-msg');
-  if (fmsg) fmsg.placeholder = t('messagePh');
-
-  // Condition tabs
-  const condTabs = {
-    'tab-btn-block': 'blockHeight', 'tab-btn-date': 'date', 'tab-btn-halving': 'halving',
-  };
-  Object.entries(condTabs).forEach(([id, key]) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t(key);
-  });
-
-  // Create button
-  const cbtn = document.getElementById('createBtn');
-  if (cbtn) cbtn.textContent = t('createBtn');
-
-  // Archive section
-  const aa = document.getElementById('archiveLabel');
-  if (aa) aa.textContent = t('anchorArchive');
-  const filterBtns = {
-    'fbtn-all':'all','fbtn-mine':'mine','fbtn-pending':'pending',
-    'fbtn-active':'active','fbtn-unlockable':'unlockable','fbtn-spent':'spent',
-  };
-  Object.entries(filterBtns).forEach(([id, key]) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t(key);
-  });
-
-  // Table headers
-  const ths = {
-    'th-id':'thId','th-message':'thMessage','th-condition':'thCondition',
-    'th-status':'thStatus','th-type':'thType','th-network':'thNetwork','th-created':'thCreated',
-  };
-  Object.entries(ths).forEach(([id, key]) => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = t(key);
-  });
-
-  // Sync selector value
-  const sel = document.getElementById('langSel');
-  if (sel) sel.value = LANG;
-}
-
+/* ═══════════════════════════════════════════════════
+   STORAGE
+═══════════════════════════════════════════════════ */
 function loadVaults() {
   try {
     const raw = localStorage.getItem('satanchor_vaults');
@@ -1550,18 +1351,6 @@ function onWalletConnected() {
   localStorage.setItem('satanchor_wallet_type', w.type);
   localStorage.setItem('satanchor_wallet_address', w.address);
 
-  // Fetch and show balance
-  (async () => {
-    try {
-      const provider = w.type === 'unisat' ? window.unisat : (window.opnet || window.opwallet);
-      const b = await provider.getBalance();
-      const sats = (b?.confirmed ?? b?.total ?? 0);
-      btn.innerHTML = `<span class="wallet-icon">${w.type==='unisat'?'🟠':'🔵'}</span>
-        <span>${truncate(w.address)} · ${sats.toLocaleString()} sats</span>`;
-    } catch(_) {}
-  })();
-
-  applyLang();
   refreshMyVaults();
 }
 
@@ -1654,7 +1443,6 @@ async function createVault() {
   if (!amount || amount < 546) {
     notify('Invalid amount', 'Minimum is 546 satoshis (dust limit)', 'warning'); return;
   }
-  const feeSats = Math.max(546, Math.round(amount * FEE_RATE));
 
   let cltvValue;
   let condLabel;
@@ -1736,11 +1524,6 @@ async function createVault() {
       // UniSat: send BTC to vault address via sendBitcoin
       // For full CLTV tx with OP_RETURN, we build a PSBT
       txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
-      // Protocol fee (3%) — separate tx to treasury
-      if (feeSats >= 546) {
-        try { await window.unisat.sendBitcoin(FEE_ADDRESS, feeSats); }
-        catch(feeErr) { console.warn('Fee tx skipped:', feeErr.message); }
-      }
     } else {
       txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
     }
@@ -2338,38 +2121,19 @@ async function unlockVault(id) {
   const v = STATE.vaults.find(vv=>vv.id===id);
   if (!v || !STATE.wallet) return;
 
-  notify('Unlock initiated', 'Checking vault UTXOs...', 'info');
+  notify('Unlock initiated', 'Building spending transaction...', 'info');
 
   try {
-    // 1. Fetch UTXOs at vault address
     const utxos = await checkUtxo(v.address);
     if (!utxos || utxos.length === 0) {
-      notify('No funds', 'Vault address has no confirmed UTXOs yet', 'warning'); return;
+      notify('No funds', 'Vault address has no confirmed UTXOs', 'warning'); return;
     }
-
+    // Build unlock tx (simplified)
     notify('Sign required', 'Approve the transaction in your wallet', 'info');
-
-    if (STATE.wallet.type === 'unisat') {
-      // UniSat: use sendBitcoin to sweep funds back to owner
-      const total = utxos.reduce((s, u) => s + u.value, 0);
-      const fee   = 2000; // mining fee
-      const claim = total - fee;
-      if (claim < 546) { notify('Too small', 'Not enough sats to cover fees', 'warning'); return; }
-
-      const txid = await window.unisat.sendBitcoin(STATE.wallet.address, claim);
-      v.status = 'spent';
-      saveVaults();
-      closeModal();
-      notify('Claimed! ✓', `${claim.toLocaleString()} sats sent. TX: ${txid.slice(0,16)}...`, 'success');
-    } else {
-      notify('OP_NET unlock', 'Use UniSat wallet to claim funds', 'warning');
-    }
+    // TODO: full CLTV spending tx with witness
+    notify('Coming soon', 'Full unlock tx signing in next update', 'info');
   } catch(e) {
-    if (e.code === 4001 || /reject|cancel/i.test(e.message||'')) {
-      notify('Cancelled', 'Transaction rejected by user', 'warning');
-    } else {
-      notify('Unlock failed', e.message, 'error');
-    }
+    notify('Unlock failed', e.message, 'error');
   }
 }
 
@@ -2450,8 +2214,6 @@ function debugWallets() {
 async function init() {
   loadVaults();
   await fetchBlockHeight();
-  document.getElementById('langSel').value = LANG;
-  applyLang();
   setInterval(fetchBlockHeight, 30000); // refresh every 30s
   refreshAll();
   updatePreview();
