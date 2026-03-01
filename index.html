@@ -567,10 +567,8 @@ async function buildPSBT(utxos, toAddr, toSats, changeSats, changeAddr) {
     const witnessUtxo = cat(uint64LE(value), varInt(spk.length), spk);
     parts.push(kv(new Uint8Array([0x01]), witnessUtxo));
 
-    // PSBT_IN_TAP_INTERNAL_KEY (0x15) — x-only pubkey, tells wallet which key to use
-    if (xOnly && xOnly.length===32) {
-      parts.push(kv(new Uint8Array([0x15]), xOnly));
-    }
+    // NOTE: do NOT include TAP_INTERNAL_KEY here — OP_WALLET derives tweaked key
+    // from toSignInputs.address internally. Adding wrong internal key causes errors.
 
     parts.push(new Uint8Array([0x00])); // end input
   }
@@ -876,10 +874,18 @@ async function sendOPWallet(amountSats, anchorId, msgHash) {
   notify('Approve in OP_WALLET...','Check the popup','info');
   await new Promise(r=>setTimeout(r,200));
 
+  // OP_WALLET needs toSignInputs with address so it can find the tweaked key itself.
+  // Do NOT pass tapInternalKey — wallet derives tweaked output key from its keystore.
+  const toSignInputs = utxos.map((_,i) => ({
+    index: i,
+    address: S.wallet.address,
+    disableTweakSigner: false,  // false = use tweaked key (Taproot default)
+  }));
+
   let signed;
   try {
     signed = await Promise.race([
-      p.signPsbt(psbtHex, { autoFinalized: true }),
+      p.signPsbt(psbtHex, { autoFinalized: true, toSignInputs }),
       new Promise((_,rej)=>setTimeout(()=>rej(new Error('signPsbt timed out after 30s')),30000))
     ]);
     console.log('signPsbt OK, len:', signed?.length);
