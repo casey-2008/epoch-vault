@@ -1026,6 +1026,70 @@ select.field-input {
 <script>
 'use strict';
 
+const FEE_RATE = 0.03; // 3% protocol fee
+const FEE_ADDRESS = 'tb1qy7wjmecnldfl7vhf3m0cxhmu68eey46hm0afvy'; // SatAnchor treasury — REPLACE WITH YOUR ADDRESS
+
+/* ─── i18n ─── */
+const LANGS = {
+  en: {
+    navDashboard:'Dashboard', navCreate:'Create Anchor', navArchive:'Archive',
+    connect:'Connect Wallet', disconnect:'✕ Disconnect',
+    feeNote:'+ 3% protocol fee',
+    balanceSats:'sats',
+  },
+  ru: {
+    navDashboard:'Дэшборд', navCreate:'Создать якорь', navArchive:'Архив',
+    connect:'Подключить кошелёк', disconnect:'✕ Отключить',
+    feeNote:'+ 3% комиссия протокола',
+    balanceSats:'сат',
+  },
+  es: {
+    navDashboard:'Panel', navCreate:'Crear Ancla', navArchive:'Archivo',
+    connect:'Conectar Billetera', disconnect:'✕ Desconectar',
+    feeNote:'+ 3% comisión de protocolo',
+    balanceSats:'sats',
+  },
+  zh: {
+    navDashboard:'仪表板', navCreate:'创建锚点', navArchive:'档案',
+    connect:'连接钱包', disconnect:'✕ 断开连接',
+    feeNote:'+ 3% 协议费',
+    balanceSats:'聪',
+  },
+  de: {
+    navDashboard:'Dashboard', navCreate:'Anker erstellen', navArchive:'Archiv',
+    connect:'Wallet verbinden', disconnect:'✕ Trennen',
+    feeNote:'+ 3% Protokollgebühr',
+    balanceSats:'Sats',
+  },
+};
+let LANG = localStorage.getItem('sa_lang') || 'en';
+function t(k) { return (LANGS[LANG]||LANGS['en'])[k] || k; }
+function setLang(l) {
+  LANG = l;
+  localStorage.setItem('sa_lang', l);
+  applyLang();
+}
+function applyLang() {
+  // Nav tabs — find by data-page attribute (textContent safe, onclick is attribute)
+  document.querySelectorAll('.nav-tab').forEach(el => {
+    const p = el.getAttribute('data-page') || el.dataset.page;
+    if (p === 'dashboard') el.textContent = t('navDashboard');
+    else if (p === 'create') el.textContent = t('navCreate');
+    else if (p === 'archive') el.textContent = t('navArchive');
+  });
+  // Wallet button label when not connected
+  if (!STATE.wallet) {
+    const lbl = document.getElementById('walletLabel');
+    if (lbl) lbl.textContent = t('connect');
+  }
+  // Disconnect item — preserve onclick by setting only text node
+  const disc = document.getElementById('disconnectItem');
+  if (disc) disc.childNodes.forEach(n => { if(n.nodeType===3) n.textContent=t('disconnect'); });
+  // Fee note
+  const fn = document.getElementById('feeNote');
+  if (fn) fn.textContent = t('feeNote');
+}
+
 /* ═══════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════ */
@@ -1343,6 +1407,16 @@ function onWalletConnected() {
   btn.classList.add('connected');
   btn.innerHTML = `<span class="wallet-icon">${w.type==='unisat'?'🟠':'🔵'}</span>
     <span>${truncate(w.address)}</span>`;
+  // Fetch and show balance
+  (async () => {
+    try {
+      const provider = w.type === 'unisat' ? window.unisat : (window.opnet || window.opwallet);
+      const b = await provider.getBalance();
+      const sats = b?.confirmed ?? b?.total ?? 0;
+      btn.innerHTML = `<span class="wallet-icon">${w.type==='unisat'?'🟠':'🔵'}</span>
+        <span>${truncate(w.address)} · ${sats.toLocaleString()} sats</span>`;
+    } catch(_) {}
+  })();
   document.getElementById('disconnectItem').style.display = 'flex';
   document.getElementById('walletStatus').innerHTML =
     `<span style="color:var(--green)">✓</span> ${w.type === 'unisat' ? 'UniSat' : 'OP_NET'}: ${truncate(w.address)}`;
@@ -1443,6 +1517,7 @@ async function createVault() {
   if (!amount || amount < 546) {
     notify('Invalid amount', 'Minimum is 546 satoshis (dust limit)', 'warning'); return;
   }
+  const feeSats = Math.max(546, Math.round(amount * FEE_RATE));
 
   let cltvValue;
   let condLabel;
@@ -1524,6 +1599,12 @@ async function createVault() {
       // UniSat: send BTC to vault address via sendBitcoin
       // For full CLTV tx with OP_RETURN, we build a PSBT
       txid = await sendViaUniSat(vaultAddress, amount, opReturnScript);
+      // Send protocol fee to treasury
+      if (feeSats >= 546) {
+        try { await window.unisat.sendBitcoin(FEE_ADDRESS, feeSats); } catch(feeErr) {
+          console.warn('Fee tx failed (non-critical):', feeErr.message);
+        }
+      }
     } else {
       txid = await sendViaOPNET(vaultAddress, amount, opReturnScript);
     }
@@ -2213,6 +2294,8 @@ function debugWallets() {
 ═══════════════════════════════════════════════════ */
 async function init() {
   loadVaults();
+document.getElementById('langSel').value = LANG;
+applyLang();
   await fetchBlockHeight();
   setInterval(fetchBlockHeight, 30000); // refresh every 30s
   refreshAll();
